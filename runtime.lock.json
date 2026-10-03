@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "runtime_repository": "https://github.com/PrismML-Eng/llama.cpp",
+  "runtime_revision": "adfffbe41b2cabcd51fff326ab045662265062bb",
+  "runtime_tag": "prism-b10743-adfffbe",
+  "endpoint_base_revision": "7f4081f1f8548ac37cf01fa3bc0b507eb3e70f4a",
+  "endpoint_binding": "prism-adfffbe",
+  "model_repository": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+  "model_revision": "b072e1d3b35a0a630cece372c2127528e0994386",
+  "model_filename": "Ternary-Bonsai-2-27B-PQ2_0.gguf",
+  "model_sha256": "3907dc1658db1f78a9826bf8d5bcb8dc65db0d466388937af57f2294fae62ec1",
+  "model_size_bytes": 7206168928,
+  "endpoint_model_digest": "53ca33546231fefcc4cb1fdbda3cbc5c0ca5c984a9c10f4a6b0e38cfa2388910",
+  "pilot": "rtx8000",
+  "cuda_architecture": "75",
+  "kv_type": "q8_0/q8_0",
+  "context_size": 262144,
+  "slots": 4
+}
