@@ -3,5 +3,8 @@ set -eu
 mkdir -p /var/log/merlin-engines
 run_log_dir=$(mktemp -d /var/log/merlin-engines/rtx8000-XXXXXXXX)
 export MERLIN_KERNEL_LOG="$run_log_dir/kernels.jsonl"
+export MERLIN_ENGINE_PROFILE=/var/cache/merlin-engines/rtx8000-profile.tsv
 printf 'merlin-engine: kernel log %s\n' "$MERLIN_KERNEL_LOG" >&2
+python3 "${YZMA_LIB:?runtime directory required}/calibrate_runtime.py" \
+  --runtime "$YZMA_LIB" --log-dir "$run_log_dir" "$@"
 exec /usr/local/bin/merlin-endpoint "$@"

@@ -18,10 +18,15 @@ Repository setup and the [first RTX 8000 baseline](docs/benchmarks/rtx8000-2026-
 are complete: 22,583 input tokens, 30.60 seconds to first token, 31.11 seconds
 total, and the correct retrieved value. The report preserves a checker false
 failure caused by an unspecified JSON key; the request generator now specifies it.
-**Custom decode and prefill source is implemented; CUDA compilation and GPU validation are pending.**
-Decode specializes batches 1/2/4/8; prefill uses shared-memory WMMA tiles on Turing.
+**CUTLASS prefill and measured-dispatch source is implemented; this revision's CUDA compilation and GPU validation are pending.**
+Decode specializes batches 1/2/4/8. Prefill uses CUTLASS integer Tensor Core tiles
+and the existing Bonsai PQ2/Q8 arithmetic. The old FP16 WMMA prototype was slower
+than Prism and has been removed; the endpoint was restored to the reference runtime.
 See [decode](docs/decode-kernel.md), [prefill](docs/prefill-kernel.md), and
-[runtime logging](docs/profiling.md). Calibrated dispatch is not implemented.
+[runtime logging](docs/profiling.md), [measured dispatch](docs/measured-dispatch.md),
+and the [requirement checklist](docs/design-conformance.json). Startup calibration
+and persisted measured dispatch are implemented in source. Remaining design gaps
+are explicitly listed in the checklist; implementation is not performance proof.
 No speedup is claimed.
 The owner has deferred SpecKit work until a viable implementation functions.
 The owner has also waived the change gate in this subtree repository during

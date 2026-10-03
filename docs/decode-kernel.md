@@ -1,6 +1,6 @@
 # Packed PQ2 decode prototype
 
-Status: implemented; CUDA compilation, numerical verification, logits and performance are not yet verified. This is an experimental runtime, not a calibrated production default. No SpecKit work is included.
+Status: implemented and connected to measured startup calibration; CUDA compilation, numerical verification, logits and performance for this revision are not yet verified. No SpecKit work is included.
 
 `merlin_pq2_decode<batch, gated>` specializes batches 1, 2, 4 and 8. One warp computes one output row; four warps form a block. Each lane reads one packed byte per 128-weight block and reuses it across all batch columns. It decodes all four PQ2 codes (-1, 0, +1, +2), applies the block's FP16 scale in F32, accumulates against F32 activations and reduces the warp. Weights stay packed in VRAM. Device workspace is zero; no activation Q8 allocation or quantization is needed for this route.
 
@@ -8,7 +8,7 @@ The existing `ggml_cuda_mul_mat_vec_q` production entry point calls the custom d
 
 The supported domain is Turing compute capability 7.5 (`cc == 750`), PQ2_0 weights, F32 activations/output, contiguous two-dimensional tensors on this CUDA device, positive dimensions, K divisible by 128, and N in {1,2,4,8}. Output must not overlap input weights or activations. Batch-1 bias and gate fusions use the existing SiLU, GELU and SwiGLU-OAI device functions and the same epilogue ordering as Prism. Fused gate matrices must match the weight shape, and bias tensors must be contiguous F32 vectors of M elements. Scale fusion is excluded: upstream permits it only for NVFP4, not PQ2.
 
-Other hardware, formats, batch sizes, broadcasted/permuted tensors, split-device tensors and expert-indexed `MUL_MAT_ID` remain separate existing dispatcher domains. This prototype does not implement PTQ1 or AMD kernels. The dispatcher has no enable/disable switch: eligible shapes in this experimental library use the custom kernel. Compare against the separately staged reference library. Calibrated kernel selection is still future work.
+Other hardware, formats, broadcasted/permuted tensors, split-device tensors and expert-indexed `MUL_MAT_ID` remain separate existing dispatcher domains. This prototype does not implement PTQ1 or AMD kernels. Eligible decode shapes register native decode and, when unfused and compatible, both CUTLASS matrix tiles. Normal inference selects only numerically accepted, faster candidates from a matching startup profile; otherwise it uses Prism. See [measured dispatch](measured-dispatch.md) for the calibration and graph boundaries.
 
 `merlin_kernel_log` receives phase `decode`, kernel `pq2_f32_warp`, device, M/N/K, workspace 0, and whether an epilogue fusion is present. N is the batch specialization. These are host dispatch submissions: a CUDA graph replay can execute a captured kernel without another host log entry. The logger must not describe these entries as the count of executed GPU kernels.
 

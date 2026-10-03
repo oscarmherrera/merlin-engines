@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import shlex
+from cutlass_dependency import prepare as prepare_cutlass
 
 
 def run(*args, **kwargs):
@@ -61,6 +62,7 @@ def main():
         print('Reusing object directory for the unchanged pinned upstream revision.', flush=True)
     else:
         run('git', 'clone', '--depth', '1', '--branch', lock['runtime_tag'], repository, source)
+    cutlass = prepare_cutlass(lock, scratch / 'cutlass', run)
     run(sys.executable, root / 'scripts/apply_runtime.py', source)
     environment = dict(os.environ, CUDACXX=str(nvcc), CUDAHOSTCXX=args.host_cxx)
     environment['PATH'] = str(cuda / 'bin') + os.pathsep + environment.get('PATH', '')
@@ -69,6 +71,7 @@ def main():
     run('cmake', '-S', source, '-B', build,
         '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=ON', '-DGGML_NATIVE=OFF',
         '-DGGML_CUDA=ON', '-DGGML_CUDA_FA_ALL_QUANTS=OFF', '-DCMAKE_CUDA_ARCHITECTURES=75',
+        f'-DGGML_CUDA_CUTLASS_DIR={cutlass}',
         f'-DCMAKE_CUDA_COMPILER={nvcc}', f'-DCUDAToolkit_ROOT={cuda}',
         f'-DCMAKE_CUDA_HOST_COMPILER={args.host_cxx}', f'-DCMAKE_CXX_COMPILER={args.host_cxx}',
         f'-DCMAKE_C_COMPILER={args.host_cc}',
@@ -91,7 +94,11 @@ def main():
             else:
                 os.link(path, target)
     shutil.copyfile(source / 'LICENSE', bundle / 'LICENSE.llama.cpp')
+    shutil.copyfile(cutlass / 'LICENSE.txt', bundle / 'LICENSE.cutlass')
+    for name in ('calibrate_runtime.py', 'calibration_shapes.py'):
+        shutil.copyfile(root / 'scripts' / name, bundle / name)
     manifest = {'engine_revision': engine_revision, 'runtime_revision': lock['runtime_revision'],
+                'cutlass_revision': lock['cutlass_revision'], 'cutlass_tag': lock['cutlass_tag'],
                 'endpoint_binding': lock['endpoint_binding'], 'cuda_architectures': ['75'],
                 'reused_objects_same_upstream': args.reuse_scratch,
                 'build_jobs': args.jobs,

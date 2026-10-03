@@ -21,5 +21,5 @@ def apply(source: Path, root: Path):
         if text.count(before) != 1:
             raise ValueError('Pinned decode integration anchor changed')
         text = text.replace(before, after)
-    shutil.copyfile(root / 'runtime/merlin-decode.cuh', path.parent / 'merlin-decode.cuh')
+    shutil.copyfile(root / 'engine/backends/cuda/decode_ternary/merlin-decode.cuh', path.parent / 'merlin-decode.cuh')
     path.write_text(text)

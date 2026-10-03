@@ -10,7 +10,8 @@
 
 // Host submissions, not CUDA graph replays or completed GPU work.
 inline void merlin_kernel_log(const char * phase, const char * kernel, int device,
-        int64_t m, int64_t n, int64_t k, size_t workspace_bytes, bool fused) {
+        int64_t m, int64_t n, int64_t k, size_t workspace_bytes, bool fused,
+        size_t shared_bytes_per_block = 0) {
     static std::atomic<unsigned long long> submissions[5]{};
     const unsigned bucket = std::strcmp(phase, "prefill") == 0 ? 4 :
         n == 1 ? 0 : n == 2 ? 1 : n == 4 ? 2 : 3;
@@ -39,15 +40,21 @@ inline void merlin_kernel_log(const char * phase, const char * kernel, int devic
     const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     FILE * output = file ? file : stderr;
+    char workspace[32];
+    if (workspace_bytes == SIZE_MAX) {
+        std::strcpy(workspace, "null");
+    } else {
+        std::snprintf(workspace, sizeof(workspace), "%zu", workspace_bytes);
+    }
     std::fprintf(output,
         "{\"schema\":1,\"event\":\"merlin_kernel_dispatch\","
         "\"unix_ms\":%lld,\"phase_batch_submission\":%llu,\"phase\":\"%s\","
         "\"kernel\":\"%s\",\"device\":%d,\"m\":%lld,\"n\":%lld,"
-        "\"k\":%lld,\"workspace_bytes\":%zu,\"fused\":%s,"
+        "\"k\":%lld,\"workspace_bytes\":%s,\"shared_bytes_per_block\":%zu,\"fused\":%s,"
         "\"gpu_completion\":false,\"counts_graph_replays\":false}\n",
         static_cast<long long>(timestamp), sequence, phase, kernel, device,
         static_cast<long long>(m), static_cast<long long>(n), static_cast<long long>(k),
-        workspace_bytes, fused ? "true" : "false");
+        workspace, shared_bytes_per_block, fused ? "true" : "false");
     if (std::fflush(output) != 0 || std::ferror(output)) {
         std::fputs("merlin-engine: kernel dispatch log write failed\n", stderr);
         std::abort();

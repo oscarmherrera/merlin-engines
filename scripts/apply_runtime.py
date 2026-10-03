@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from apply_decode import apply as apply_decode
 from apply_prefill import apply as apply_prefill
+from configure_runtime import apply as configure_runtime
+from apply_calibration import apply as apply_calibration
 
 
 def main():
@@ -32,17 +34,21 @@ def main():
          '                    cuda_ctx->curr_stream_no, cuda_ctx->stream());\n\n'
          '                // The normalized pre-attention residual is consumed only by a\n'),
         ('    if (graph->is_enabled()) {\n',
-         '    if (graph->is_enabled() && !merlin_cuda_profile_enabled()) {\n'),
+         '    if (graph->is_enabled() && !merlin_cuda_profile_enabled() && !merlin_dispatch_calibrating()) {\n'),
     ]
     for before, after in changes:
         if text.count(before) != 1:
             raise SystemExit('Pinned source integration anchor changed')
         text = text.replace(before, after)
     path.write_text(text)
-    shutil.copyfile(root / 'runtime/merlin-profile.cuh', path.parent / 'merlin-profile.cuh')
-    shutil.copyfile(root / 'runtime/merlin-kernel-log.cuh', path.parent / 'merlin-kernel-log.cuh')
+    shutil.copyfile(root / 'engine/telemetry/merlin-profile.cuh', path.parent / 'merlin-profile.cuh')
+    shutil.copyfile(root / 'engine/telemetry/merlin-kernel-log.cuh', path.parent / 'merlin-kernel-log.cuh')
+    for header in (root / 'engine/dispatch').glob('merlin-dispatch*'):
+        shutil.copyfile(header, path.parent / header.name)
     apply_decode(args.source, root)
     apply_prefill(args.source, root)
+    apply_calibration(args.source)
+    configure_runtime(args.source, root, lock)
     print('Applied Merlin packed decode, tiled prefill and runtime logging.', flush=True)
 
 

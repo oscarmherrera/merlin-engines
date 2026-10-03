@@ -8,9 +8,10 @@ def apply(source: Path, root: Path) -> None:
     text = path.read_text()
     anchors = [
         ('#include "ggml-cuda/mmq.cuh"\n',
-         '#include "ggml-cuda/mmq.cuh"\n#include "ggml-cuda/merlin-prefill.cuh"\n'),
+         '#include "ggml-cuda/mmq.cuh"\n#include "ggml-cuda/merlin-prefill.cuh"\n'
+         '#include "ggml-cuda/merlin-dispatch-prefill.cuh"\n'),
         ('    // If src0 is a temporary compute buffer it may have some padding that needs to be cleared for mul_mat_vec_q or mul_mat_q.\n',
-         '    if (try_merlin_prefill(ctx, src0, src1, dst)) {\n'
+         '    if (merlin_dispatch_prefill(ctx, src0, src1, dst, ggml_cuda_mul_mat)) {\n'
          '        return;\n'
          '    }\n\n'
          '    // If src0 is a temporary compute buffer it may have some padding that needs to be cleared for mul_mat_vec_q or mul_mat_q.\n'),
@@ -33,4 +34,5 @@ def apply(source: Path, root: Path) -> None:
         '    }\n\n' + anchor)
     path.write_text(text)
     test_path.write_text(tests)
-    shutil.copyfile(root / 'runtime/merlin-prefill.cuh', path.parent / 'merlin-prefill.cuh')
+    for name in ('merlin-prefill.cuh', 'merlin-prefill-tile.cuh'):
+        shutil.copyfile(root / 'engine/backends/cuda/prefill_cutlass' / name, path.parent / name)

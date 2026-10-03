@@ -1,0 +1,127 @@
+{
+  "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
+  "design_version": "0.1, 2026-10-03",
+  "review_state": "WORK IN PROGRESS: checked against implementation, not a completion claim",
+  "requirements": [
+    {
+      "requirement": "Bonsai core and endpoint integration",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Prism adfffbe loader, graph, KV and sampling reused through existing endpoint ABI; no new front end.",
+      "evidence": "runtime.lock.json; scripts/apply_runtime.py"
+    },
+    {
+      "requirement": "Packed resident weights; no model-sized expansion",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Packed weights remain in VRAM; bounded unpacked int8 tiles live only in shared memory. Global scratch holds Q8 activations, not expanded model weights. GPU memory proof pending.",
+      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; engine/backends/cuda/prefill_cutlass/merlin-prefill.cuh"
+    },
+    {
+      "requirement": "Original arithmetic, scales and Hadamard transforms",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Owner-approved PQ2/Q8 integer path, existing Prism quantizer, half weight scales and per32 float activation scales; dispatch remains after graph Hadamard handling. Floating accumulation order still requires numeric proof.",
+      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill.cuh; engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; scripts/apply_prefill.py"
+    },
+    {
+      "requirement": "CUTLASS/CUDA fused ternary-to-tile prefill",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp, double-buffered32x32/64x64 candidate tiles; compiler and GPU results pending.",
+      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; runtime.lock.json"
+    },
+    {
+      "requirement": "Independent tile/pipeline/prompt tuning",
+      "status": "PARTIAL",
+      "finding": "Two Turing tile candidates registered; pipeline depth fixed2. No measured tuning results yet. Ampere deliberately later.",
+      "evidence": "engine/dispatch/merlin-dispatch-prefill.cuh"
+    },
+    {
+      "requirement": "Native packed decode batches1/2/4/8",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Existing native decode retained and wrapped by measured selection. Previous prototype numeric results do not validate this new dispatcher.",
+      "evidence": "engine/backends/cuda/decode_ternary/merlin-decode.cuh"
+    },
+    {
+      "requirement": "Tensor Core decode competitor",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Both CUTLASS candidates registered alongside native decode where compatible; fusion-specific unsupported cases retain reference.",
+      "evidence": "engine/backends/cuda/decode_ternary/merlin-decode.cuh"
+    },
+    {
+      "requirement": "Kernel registry by device/format/shape/phase",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Compatible candidates assembled at production dispatch, keyed by architecture/type/shape/fusion. Phase currently inferred from operator width; see full-key gap.",
+      "evidence": "engine/dispatch/merlin-dispatch-prefill.cuh; engine/backends/cuda/decode_ternary/merlin-decode.cuh"
+    },
+    {
+      "requirement": "Full cost-dispatch key",
+      "status": "PARTIAL",
+      "finding": "Architecture/op/M/N/K/format/fusion included. Phase inferred from route width; batch and tokens_in_flight both derive from N. Independent scheduler phase/workload signals are not exposed.",
+      "evidence": "engine/dispatch/merlin-dispatch-profile.h; engine/dispatch/merlin-dispatch-prefill.cuh"
+    },
+    {
+      "requirement": "Startup warmup and persisted median calibration",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Metadata-derived representative shapes; explicit startup process invokes real backend graph; two warmups and five event samples per route. Compile/execution pending.",
+      "evidence": "scripts/calibrate_runtime.py; scripts/calibration_shapes.py; engine/dispatch/merlin-dispatch.cuh"
+    },
+    {
+      "requirement": "Fastest correct candidate and unseen-shape reference",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Full-output finite/NMSE comparison and strict median improvement required; unprofiled/unsafe shapes keep Prism. GPU verification pending.",
+      "evidence": "engine/dispatch/merlin-dispatch.cuh; engine/dispatch/merlin-dispatch-profile.h"
+    },
+    {
+      "requirement": "GPU/driver/compiler/runtime profile invalidation",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Fingerprint includes GPU UUID/arch, driver/runtime, nvcc/host compiler and engine/Prism/CUTLASS revisions.",
+      "evidence": "engine/dispatch/merlin-dispatch.cuh"
+    },
+    {
+      "requirement": "Invalidate/retest on observed cost drift",
+      "status": "PARTIAL",
+      "finding": "Asynchronous uncaptured per-shape samples can invalidate a slower candidate. Captured graph replays are neither observed nor invalidated; retest occurs at next startup.",
+      "evidence": "engine/dispatch/merlin-dispatch.cuh"
+    },
+    {
+      "requirement": "Bounded scratch and preallocated workspace",
+      "status": "PARTIAL",
+      "finding": "Q8 cap128MiB; calibration host buffers256MiB/output. Startup calibration is a separate process and cannot preallocate the endpoint CUDA context. Endpoint pool reused on demand; explicit preallocation still missing.",
+      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill.cuh; engine/dispatch/merlin-dispatch.cuh"
+    },
+    {
+      "requirement": "Profiler latency/bytes/workspace/selection/end-to-end",
+      "status": "PARTIAL",
+      "finding": "Operation timings, calibration costs, route/workspace logs and endpoint TTFT harness exist. Actual bytes moved and captured replay completion attribution are incomplete.",
+      "evidence": "engine/telemetry/merlin-profile.cuh; engine/telemetry/merlin-kernel-log.cuh; benchmarks/single_request.py"
+    },
+    {
+      "requirement": "KV capacity, prefix reuse and context pressure",
+      "status": "REUSED_UNVERIFIED",
+      "finding": "Existing endpoint/Prism KV implementation retained; long-context and prefix regression tests not run for new engine.",
+      "evidence": "deploy/rtx8000/merlin-endpoint.service"
+    },
+    {
+      "requirement": "Repository layout from design section11",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "CUDA candidates now under engine/backends/cuda/{prefill_cutlass,decode_ternary}; shared dispatch, telemetry and tests under engine/. Core/formats/KV supplied by pinned Prism, without empty replacement modules. Existing benchmark tooling remains at repository root.",
+      "evidence": "engine/; scripts/"
+    },
+    {
+      "requirement": "Correctness/logits, stability and speed acceptance gates",
+      "status": "NOT_VERIFIED",
+      "finding": "No new CUDA build or GPU evidence yet. Full logits, long context, batching/prefix, memory and improvement remain acceptance work.",
+      "evidence": "docs/prefill-kernel.md"
+    },
+    {
+      "requirement": "3090/P40 then R9700",
+      "status": "DEFERRED_BY_OWNER_SEQUENCE",
+      "finding": "RTX8000 first; later hardware intentionally not implemented/tested in current stage. P40 added and Ryzen excluded explicitly by owner.",
+      "evidence": "README.md"
+    },
+    {
+      "requirement": "SpecKit formalization",
+      "status": "DEFERRED_BY_OWNER",
+      "finding": "No SpecKit work until viable/functioning; subtree gate waived only.",
+      "evidence": "README.md"
+    }
+  ]
+}

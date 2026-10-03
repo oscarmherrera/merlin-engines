@@ -1,45 +1,64 @@
-# PQ2 prefill prototype
+# CUTLASS resident PQ2 prefill candidates
 
-The experimental runtime routes ordinary contiguous two-dimensional PQ2_0 × F32
-matrix products to `pq2_wmma_32x32x128` on NVIDIA compute capability 7.5, for N ≥ 16.
-This is an implementation boundary, not a measured performance crossover.
-M and N tails are masked; K must be a positive multiple of the format's 128-weight
-block. All other supported hardware, formats, layouts, broadcasts and operations
-retain their existing algorithms. Decode batches 1, 2, 4 and 8 are separate.
-All tensors must have non-null, correctly aligned data inside a CUDA buffer owned
-by the dispatch device. Contiguous views are supported using their actual data
-span. Host/split buffers and an output overlapping either input are excluded.
+These candidates implement packed PQ2_0 × Q8 integer matrix products with CUTLASS
+4.8.0 (commit `098de2a652cf8f00fd70b2df54051c7eccbb855a`) SM75 Tensor Core operators.
+They replace the removed FP16 WMMA prototype. No FP16 activation conversion or
+expanded floating-point weight matrix is used.
 
-The production hook sits in `ggml_cuda_mul_mat` after the existing Hadamard special
-operation. It does not alter the graph's separate activation transforms. Fused
-normalization/SwiGLU MMQ calls, indexed expert products and multi-device split
-products have distinct contracts and are not covered by this first prefill kernel.
+The caller reuses Prism's exact `quantize_mmq_q8_1_cuda` function, with PQ2's D4
+layout: signed 8-bit activation values and one FP32 scale per 32 activations.
+Each 128-weight PQ2 block retains its original FP16 scale and all two-bit codes
+map to −1, 0, +1, +2. Integer sums reset every 32 elements; accumulation applies
+`float(dot) * weight_scale * activation_scale` in that order, as in the existing
+PQ2 MMQ arithmetic. Floating-point accumulation order can differ from Prism's
+parallel reduction and must pass the measured dispatcher's numeric comparison.
+The graph's Hadamard handling remains before dispatch.
 
-Four warps compute one 32×32 output tile. Each K step directly reads 32 packed
-128-weight blocks, applies each block's FP16 scale and maps all four two-bit codes
-to −1, 0, +1, +2. Only shared FP16 tiles are materialized; WMMA multiplies them with
-FP32 accumulation. Output is written as F32 in ggml's column layout.
-The block uses 20,480 bytes of static shared workspace and allocates no global
-workspace. There is no model-sized expansion, activation-quantization allocation,
-per-launch device synchronization or dynamic workspace allocation.
+The candidates have 32×32 and 64×64 output tiles, both with K=64 and four warps.
+Their respective warp tiles are 16×16×64 and 32×32×64. Both use CUTLASS
+`DefaultMmaTensorOp`, integer 8×8×16 instructions and
+`TensorOpMultiplicandCrosswise<8,64>` shared layouts. Each staged weight is reused
+across tile columns; each staged activation is reused across tile rows.
 
-The logger records phase, kernel, device, M/N/K, workspace and fusion state through
-the shared `merlin_kernel_log` API. Here workspace denotes shared bytes per CUDA
-block, not a global allocation. Kernel selection during CUDA graph capture is a
-capture-time record; replay does not invoke host dispatch again.
+The two-stage software pipeline prefetches the next packed weight/Q8 tile into
+registers, consumes the current shared tile, and writes the next stage before one
+CTA barrier. It does not use Ampere-only asynchronous-copy instructions. The
+larger tile increases reuse and per-thread accumulator/register demand; whether
+that improves latency is a calibration result, not an assumption. Shared
+workspace is 8,960 bytes per block for the narrow tile and 17,920 for the wide tile.
+CUTLASS's accumulator iterator supplies fragment coordinates once per block;
+that temporary shared storage is then reused by the two input stages.
+A padded shared-memory transpose reuses the same allocation for the final
+epilogue, letting consecutive lanes store consecutive rows in ggml's output.
 
-F32 activations are rounded to FP16. FP16 overflow/underflow, cancellation and
-different accumulation order must be evaluated against the CPU reference and
-endpoint logits; this prototype does not establish numerical acceptance or speed.
-The existing backend test executable gains 12 production graph cases: M=67,
-N=16/17/32/65, K=128/5120/17408, covering both output tails and model row lengths.
-The runner must verify cases actually execute on CUDA0 and custom-kernel log records
-exist; exit zero with skipped cases is not validation.
+Only ordinary contiguous two-dimensional PQ2/F32→F32 products on NVIDIA compute
+capability 7.5 are eligible. N≥1 allows both candidates to be compared against
+native decode at batches 1/2/4/8 as well as against reference prefill. K must be a
+positive multiple of 128. M/N tails are masked. Same-device buffer ownership,
+actual tensor data spans, alignment and nonoverlapping output are checked;
+contiguous views are supported. Indexed products, broadcasts, host/split buffers
+and fused norm/SwiGLU MMQ contracts remain distinct operations outside this
+candidate's supported domain.
 
-The implementation follows the CUDA 12.8.1 [WMMA contract](https://docs.nvidia.com/cuda/archive/12.8.1/cuda-c-programming-guide/index.html#warp-matrix-functions):
-32-byte aligned shared tile bases, matching warp-wide calls and valid leading
-dimensions. Runtime dispatch and compiled architecture are both checked.
+The existing backend pool supplies reusable Q8 activation scratch, bounded at
+128 MiB per invocation. No expanded weight tensor or extra global output scratch
+is created by the candidates. Workspace size is
+`N * ceil(K / MATRIX_ROW_PADDING) * MATRIX_ROW_PADDING / 128 * 144` bytes.
+The dispatcher owns any calibration scratch, candidate selection and logging.
+Candidate launch performs no synchronization, route logging or calibration.
 
-Status: source implementation and production overlay added. CUDA compilation,
-GPU numerical validation, endpoint validation and performance measurements pending.
-No calibration, measured dispatch, HIP port or SpecKit work is included.
+APIs in `merlin-prefill.cuh`:
+
+- `merlin_prefill_supported(ctx, weights, input, output)` checks eligibility.
+- `merlin_prefill_workspace_bytes(input)` returns bounded Q8 scratch bytes.
+- `merlin_prefill_launch(...)` runs the 32×32 candidate.
+- `merlin_prefill_launch_wide(...)` runs the 64×64 candidate.
+
+The overlay calls the measured `merlin_dispatch_prefill` hook; there is no
+unmeasured default based on N. Its backend test additions exercise real graph
+dispatch for M=67, N=16/17/32/65, K=128/5120/17408. Existing batch-1/2/4/8 cases
+cover the small-N competitor. Tests must establish actual candidate execution;
+an exit-zero run with skipped cases does not validate the kernels.
+
+Status: CUDA source written; compiler, GPU numeric, endpoint and performance
+validation pending. No SpecKit or AMD implementation is included.
