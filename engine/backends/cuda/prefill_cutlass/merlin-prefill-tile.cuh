@@ -33,7 +33,6 @@ template<int Tile, int Stages>
 union tile_storage {
     static_assert(Stages == 1 || Stages == 2, "unsupported pipeline depth");
     typename tile_config<Tile>::stage stages[Stages];
-    int32_t coordinates[Tile*Tile];
     float output[Tile*(Tile+1)];
 };
 constexpr size_t shared_bytes = sizeof(tile_storage<32, 2>);
@@ -109,19 +108,21 @@ static __global__ void pq2_cutlass(const block_pq2_0 * weights, const block_q8_1
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
     using Config = tile_config<Tile>;
     using Mma = typename Config::Mma;
+    using Instruction = typename Mma::InstructionShape;
+    using AccumulatorIterator = typename Mma::IteratorC;
+    using Delta = typename AccumulatorIterator::OpDelta;
+    constexpr int mma_rows = Mma::MmaIterations::kRow;
+    constexpr int mma_cols = Mma::MmaIterations::kColumn;
+    static_assert(Instruction::kM == 8 && Instruction::kN == 8 && Instruction::kK == 16 &&
+                  Delta::kRow == 1 && Delta::kColumn == 1 &&
+                  Mma::FragmentC::kElements == 2*mma_rows*mma_cols, "CUTLASS accumulator mapping changed");
     __shared__ tile_storage<Tile, Stages> shared;
     const int tid = threadIdx.x, lane = tid%32, warp = tid/32;
     const int warp_m = (warp/2)*(Tile/2), warp_n = (warp%2)*(Tile/2);
     const int64_t row0 = int64_t(blockIdx.x)*Tile, col0 = int64_t(blockIdx.y)*Tile;
 
-    // CUTLASS owns fragment coordinates; reuse this shared storage for input staging.
-    for (int i = tid; i < Tile*Tile; i += 128) { shared.coordinates[i] = i; }
-    __syncthreads();
-    typename Mma::FragmentC coordinates;
-    typename Mma::IteratorC coord_iter({shared.coordinates + warp_m*Tile + warp_n,
-                                       cutlass::layout::RowMajor(Tile)}, lane);
-    coord_iter.load(coordinates);
-    __syncthreads();
+    // CUTLASS 4.8.0 row-major IteratorC: lane quad selects row; each lane owns two columns.
+    const int lane_row = lane/4, lane_col = 2*(lane%4);
     cutlass::Array<float, Mma::FragmentC::kElements> sum;
     sum.clear();
 
@@ -137,6 +138,11 @@ static __global__ void pq2_cutlass(const block_pq2_0 * weights, const block_q8_1
             next = prefetch<Tile>(weights, input, row0, col0, m, n, k, inner0 + 64);
         }
         auto & tile = shared.stages[current];
+        float weight_scales[mma_rows];
+#pragma unroll
+        for (int mma_m = 0; mma_m < mma_rows; ++mma_m) {
+            weight_scales[mma_m] = tile.da[warp_m + lane_row + 8*mma_m];
+        }
         typename Mma::IteratorA iter_a({tile.a, layout_a}, lane);
         typename Mma::IteratorB iter_b({tile.b, layout_b}, lane);
         iter_a.add_tile_offset({warp/2, 0});
@@ -157,9 +163,16 @@ static __global__ void pq2_cutlass(const block_pq2_0 * weights, const block_q8_1
                 mma(accum, ta, tb, accum);
             }
 #pragma unroll
-            for (int i = 0; i < Mma::FragmentC::kElements; ++i) {
-                const int row = coordinates[i]/Tile, col = coordinates[i]%Tile;
-                sum[i] += float(accum[i])*tile.da[row]*tile.db[group][col];
+            for (int mma_n = 0; mma_n < mma_cols; ++mma_n) {
+                const int col = warp_n + lane_col + 8*mma_n;
+                const float activation_scale0 = tile.db[group][col];
+                const float activation_scale1 = tile.db[group][col + 1];
+#pragma unroll
+                for (int mma_m = 0; mma_m < mma_rows; ++mma_m) {
+                    const int i = 2*(mma_n*mma_rows + mma_m);
+                    sum[i] += float(accum[i])*weight_scales[mma_m]*activation_scale0;
+                    sum[i + 1] += float(accum[i + 1])*weight_scales[mma_m]*activation_scale1;
+                }
             }
         }
         if (Stages == 1) {
@@ -174,9 +187,15 @@ static __global__ void pq2_cutlass(const block_pq2_0 * weights, const block_q8_1
         __syncthreads();
     }
 #pragma unroll
-    for (int i = 0; i < Mma::FragmentC::kElements; ++i) {
-        const int row = coordinates[i]/Tile, col = coordinates[i]%Tile;
-        shared.output[row*(Tile+1) + col] = sum[i];
+    for (int mma_n = 0; mma_n < mma_cols; ++mma_n) {
+        const int col = warp_n + lane_col + 8*mma_n;
+#pragma unroll
+        for (int mma_m = 0; mma_m < mma_rows; ++mma_m) {
+            const int row = warp_m + lane_row + 8*mma_m;
+            const int i = 2*(mma_n*mma_rows + mma_m);
+            shared.output[row*(Tile+1) + col] = sum[i];
+            shared.output[row*(Tile+1) + col + 1] = sum[i + 1];
+        }
     }
     __syncthreads();
     // A padded shared transpose makes consecutive lanes write consecutive ggml rows.

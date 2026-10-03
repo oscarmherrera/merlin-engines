@@ -32,8 +32,12 @@ the next tile. Its shared workspace is 4,480 bytes for 32Ã—32 and 16,640 for 64Ã
 the wide tile's shared transpose dominates its single-stage allocation. Calibration
 compares this lower-storage serial schedule against next-tile prefetch; no speedup
 is assumed.
-CUTLASS's accumulator iterator supplies fragment coordinates once per block;
-that temporary shared storage is then reused by the two input stages.
+The accumulator coordinates use CUTLASS 4.8.0's pinned m8n8k16 row-major lane
+mapping directly, with compile-time shape assertions. No coordinate tensor or
+coordinate fragment remains live during GEMM. Each K=64 iteration loads a weight
+scale once per MMA row; each 32-element group reuses activation scales across
+MMA rows. The per-output `float(dot) * weight_scale * activation_scale` expression
+and accumulation order are unchanged.
 A padded shared-memory transpose reuses the same allocation for the final
 epilogue, letting consecutive lanes store consecutive rows in ggml's output.
 
