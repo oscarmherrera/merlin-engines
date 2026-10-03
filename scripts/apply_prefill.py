@@ -34,5 +34,5 @@ def apply(source: Path, root: Path) -> None:
         '    }\n\n' + anchor)
     path.write_text(text)
     test_path.write_text(tests)
-    for name in ('merlin-prefill.cuh', 'merlin-prefill-tile.cuh'):
+    for name in ('merlin-prefill.cuh', 'merlin-prefill.cu', 'merlin-prefill-tile.cuh'):
         shutil.copyfile(root / 'engine/backends/cuda/prefill_cutlass' / name, path.parent / name)
