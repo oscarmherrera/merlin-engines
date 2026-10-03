@@ -1,0 +1,37 @@
+{
+  "startup": {
+    "graphs_requested": 246,
+    "exit_code": 0,
+    "elapsed_seconds": 233.5299313100404,
+    "profile_present": true,
+    "verified_calibrated_shapes": 246,
+    "unprofiled_reference_shapes": []
+  },
+  "candidates": {
+    "pq2_f32_warp": {
+      "tested": 96,
+      "correct": 96,
+      "faster": 0
+    },
+    "pq2_cutlass_32x32x64": {
+      "tested": 246,
+      "correct": 246,
+      "faster": 0
+    },
+    "pq2_cutlass_64x64x64": {
+      "tested": 246,
+      "correct": 246,
+      "faster": 0
+    },
+    "pq2_cutlass_32x32x64_s1": {
+      "tested": 246,
+      "correct": 246,
+      "faster": 0
+    },
+    "pq2_cutlass_64x64x64_s1": {
+      "tested": 246,
+      "correct": 246,
+      "faster": 0
+    }
+  }
+}

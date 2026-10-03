@@ -1,0 +1,72 @@
+{
+  "verdict": "Inference completed correctly; custom-engine performance value was not demonstrated.",
+  "calibration": {
+    "startup": {
+      "graphs_requested": 246,
+      "exit_code": 0,
+      "elapsed_seconds": 233.5299313100404,
+      "profile_present": true,
+      "verified_calibrated_shapes": 246,
+      "unprofiled_reference_shapes": []
+    },
+    "candidates": {
+      "pq2_f32_warp": {
+        "tested": 96,
+        "correct": 96,
+        "faster": 0
+      },
+      "pq2_cutlass_32x32x64": {
+        "tested": 246,
+        "correct": 246,
+        "faster": 0
+      },
+      "pq2_cutlass_64x64x64": {
+        "tested": 246,
+        "correct": 246,
+        "faster": 0
+      },
+      "pq2_cutlass_32x32x64_s1": {
+        "tested": 246,
+        "correct": 246,
+        "faster": 0
+      },
+      "pq2_cutlass_64x64x64_s1": {
+        "tested": 246,
+        "correct": 246,
+        "faster": 0
+      }
+    }
+  },
+  "runtime_dispatch": {
+    "records": 257,
+    "logged_kernel": "prism",
+    "custom_records": 0,
+    "prefill_bypass_not_logged": true,
+    "graph_completion_events_observed": 0,
+    "graph_monitor_validation": "not established"
+  },
+  "code_findings": [
+    {
+      "file": "engine/dispatch/merlin-dispatch-prefill.cuh",
+      "finding": "Unsupported/no-scratch prefill returns false before central dispatch and logging. Scratch only reserved when some CUTLASS candidate beats reference."
+    },
+    {
+      "file": "engine/dispatch/merlin-dispatch-profile.h",
+      "finding": "choose returns reference for missing baseline, absent/incorrect candidate, or candidate not strictly faster."
+    },
+    {
+      "file": "engine/dispatch/merlin-dispatch.cuh",
+      "finding": "Calibration measures and numerically checks candidates. Normal inference does not rerun numeric comparisons; missing profile may silently yield all reference apart from initial profile status log."
+    },
+    {
+      "file": "benchmarks/single_request.py",
+      "finding": "Acceptance verifies retrieval/stream completion, model/binding/context and idleness, but does not require custom-kernel execution or performance improvement."
+    }
+  ],
+  "limitations": [
+    "Sampled host dispatch log is not a complete GPU execution trace.",
+    "No full-model logits equivalence proof.",
+    "No graph-replay completion proof."
+  ],
+  "changes": "No source changes. No rollback decision taken. Stock runtime is temporarily selected only for user-requested baselines."
+}

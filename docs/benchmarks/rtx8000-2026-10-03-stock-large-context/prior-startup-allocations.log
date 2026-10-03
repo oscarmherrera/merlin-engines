@@ -1,0 +1,10 @@
+2026-10-03T19:01:19+00:00 rtx8000 merlin-engine-endpoint[169997]: 19:01:19 INFO NativeInference llama.cpp sizing {"line": "load_tensors:   CPU_Mapped model buffer size =   322.07 MiB"}
+2026-10-03T19:01:19+00:00 rtx8000 merlin-engine-endpoint[169997]: 19:01:19 INFO NativeInference llama.cpp sizing {"line": "load_tensors:        CUDA0 model buffer size =  6539.67 MiB"}
+2026-10-03T19:01:20+00:00 rtx8000 merlin-engine-endpoint[169997]: 19:01:20 INFO NativeInference llama.cpp sizing {"line": "llama_kv_cache:      CUDA0 KV buffer size =  8704.00 MiB"}
+2026-10-03T19:01:20+00:00 rtx8000 merlin-engine-endpoint[169997]: 19:01:20 INFO NativeInference llama.cpp sizing {"line": "sched_reserve:      CUDA0 compute buffer size =  2408.34 MiB"}
+2026-10-03T19:01:20+00:00 rtx8000 merlin-engine-endpoint[169997]: 19:01:20 INFO NativeInference llama.cpp sizing {"line": "sched_reserve:  CUDA_Host compute buffer size =  1104.34 MiB"}
+2026-10-03T19:16:07+00:00 rtx8000 merlin-endpoint[170732]: 19:16:07 INFO NativeInference llama.cpp sizing {"line": "load_tensors:   CPU_Mapped model buffer size =   322.07 MiB"}
+2026-10-03T19:16:07+00:00 rtx8000 merlin-endpoint[170732]: 19:16:07 INFO NativeInference llama.cpp sizing {"line": "load_tensors:        CUDA0 model buffer size =  6539.67 MiB"}
+2026-10-03T19:16:08+00:00 rtx8000 merlin-endpoint[170732]: 19:16:08 INFO NativeInference llama.cpp sizing {"line": "llama_kv_cache:      CUDA0 KV buffer size =  8704.00 MiB"}
+2026-10-03T19:16:08+00:00 rtx8000 merlin-endpoint[170732]: 19:16:08 INFO NativeInference llama.cpp sizing {"line": "sched_reserve:      CUDA0 compute buffer size =  2408.34 MiB"}
+2026-10-03T19:16:08+00:00 rtx8000 merlin-endpoint[170732]: 19:16:08 INFO NativeInference llama.cpp sizing {"line": "sched_reserve:  CUDA_Host compute buffer size =  1104.34 MiB"}

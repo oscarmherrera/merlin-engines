@@ -1,0 +1,22 @@
+{
+  "custom_engine_revision": "dd4940ef9602bb65e7febf7cb2043cc48ad791ae",
+  "endpoint_binary_held_constant": true,
+  "stock_runtime": "prism-b10743-adfffbe",
+  "stock_loaded_gpu_memory_mib": 18430,
+  "custom_loaded_gpu_memory_mib": 18430,
+  "comparison": "Single cold known-answer retrieval per size, temperature 0, seed 12345, prefix reuse disabled, max_tokens 128. Same 61666-token messages across stock and custom.",
+  "context_per_sequence": 262144,
+  "slots": 4,
+  "no_custom_kernel_speedup_established": true,
+  "custom_graph_replay_monitoring_verified": false,
+  "authorization": "Owner requested all three stock baselines and code/log audit. Owner alone decides rollback. Runtime switch temporary for baseline measurements.",
+  "remaining": [
+    "Custom candidate performance improvement",
+    "Complete fallback-reason and graph-replay evidence",
+    "Custom 128k/226k matched runs",
+    "Batch 2/4/8 endpoint validation and full logits/stability checks",
+    "Later 3090/P40/R9700 validation",
+    "Parent subtree publication still blocked by existing parent hook; not bypassed",
+    "SpecKit deferred until viable per owner"
+  ]
+}

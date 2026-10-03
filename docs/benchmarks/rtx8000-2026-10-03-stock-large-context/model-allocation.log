@@ -1,0 +1,7 @@
+merlin-engine: startup calibration 246 graphs; log /var/log/merlin-engines/rtx8000-iJGELeiB/calibration.log
+merlin-engine: startup calibration finished in 233.530s
+21:02:00 [34mINFO[0m NativeInference llama.cpp sizing {"line": "load_tensors:   CPU_Mapped model buffer size =   322.07 MiB"}
+21:02:00 [34mINFO[0m NativeInference llama.cpp sizing {"line": "load_tensors:        CUDA0 model buffer size =  6539.67 MiB"}
+21:02:01 [34mINFO[0m NativeInference llama.cpp sizing {"line": "llama_kv_cache:      CUDA0 KV buffer size =  8704.00 MiB"}
+21:02:01 [34mINFO[0m NativeInference llama.cpp sizing {"line": "sched_reserve:      CUDA0 compute buffer size =  2408.34 MiB"}
+21:02:01 [34mINFO[0m NativeInference llama.cpp sizing {"line": "sched_reserve:  CUDA_Host compute buffer size =  1104.34 MiB"}

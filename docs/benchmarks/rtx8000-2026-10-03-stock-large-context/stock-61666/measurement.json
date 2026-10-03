@@ -1,0 +1,15 @@
+{
+  "ttft_seconds": 105.50459383428097,
+  "keepalive_frames": 7,
+  "usage": {
+    "completion_tokens": 10,
+    "prompt_tokens": 61666,
+    "total_tokens": 61676
+  },
+  "finish_reason": "stop",
+  "done": true,
+  "content": "{\"code\":\"CEDAR-731\"}",
+  "reasoning": "",
+  "http_status": 200,
+  "wall_seconds": 105.9069427093491
+}

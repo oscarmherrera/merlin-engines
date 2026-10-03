@@ -1,0 +1,4 @@
+cb80eff5164612a9695e10f0de1234d57b3425c738a1808128e404a700df99ed  /usr/local/bin/merlin-endpoint
+e8402880ad4f0b569e7b6554c34b0d902edadf1f5ac57e5349a9ba2f4d2e7672  /opt/merlin/lib/prism-b10743-adfffbe/libggml-cuda.so.0.21.0
+fde60d3e0687040ea6587240df1098753cc157fc51a1c33b6c150a6f633ce97a  /opt/merlin/lib/prism-b10743-adfffbe/libllama.so.0.2.0
+a53d6e7e5504cd62f0df25445d86f4980b0b9bc502d00e747b0cf620849588c9  /etc/systemd/system/merlin-endpoint.service

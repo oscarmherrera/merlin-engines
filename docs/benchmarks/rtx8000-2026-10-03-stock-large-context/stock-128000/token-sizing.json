@@ -1,0 +1,6 @@
+{
+  "target_prompt_tokens": 128000,
+  "raw_content_tokens": 127977,
+  "wrapper_offset_from_61666_case": 23,
+  "actual_endpoint_usage_pending": true
+}

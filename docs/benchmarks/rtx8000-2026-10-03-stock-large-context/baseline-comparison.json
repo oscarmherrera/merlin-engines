@@ -1,0 +1,75 @@
+{
+  "runtime": "stock Prism adfffbe / Bonsai 2 PQ2_0",
+  "context_size": 262144,
+  "slots": 4,
+  "cold_requests": true,
+  "prefix_reuse": false,
+  "results": [
+    {
+      "case": "stock-61666",
+      "input_tokens": 61666,
+      "output_tokens": 10,
+      "correct": true,
+      "ttft_seconds": 105.50459383428097,
+      "wall_seconds": 105.9069427093491,
+      "server_prefill_ms": 104859,
+      "server_decode_ms": 423,
+      "hardware": {
+        "samples": 105,
+        "window_start_unix": 1791062383.690241,
+        "window_end_unix": 1791062489.5971837,
+        "peak_device_vram_mib": 18500.0,
+        "min_device_free_mib": 29903.0,
+        "peak_temperature_c": 69.0,
+        "peak_power_w": 266.91
+      }
+    },
+    {
+      "case": "stock-128000",
+      "input_tokens": 128000,
+      "output_tokens": 10,
+      "correct": true,
+      "ttft_seconds": 297.118378999643,
+      "wall_seconds": 297.7158228326589,
+      "server_prefill_ms": 294811,
+      "server_decode_ms": 2123,
+      "hardware": {
+        "samples": 296,
+        "window_start_unix": 1791062554.6304362,
+        "window_end_unix": 1791062852.346259,
+        "peak_device_vram_mib": 18516.0,
+        "min_device_free_mib": 29887.0,
+        "peak_temperature_c": 70.0,
+        "peak_power_w": 267.76
+      }
+    },
+    {
+      "case": "stock-226000",
+      "input_tokens": 226000,
+      "output_tokens": 10,
+      "correct": true,
+      "ttft_seconds": 715.5527666248381,
+      "wall_seconds": 715.9399089580402,
+      "server_prefill_ms": 712517,
+      "server_decode_ms": 2463,
+      "hardware": {
+        "samples": 712,
+        "window_start_unix": 1791062882.392812,
+        "window_end_unix": 1791063598.332721,
+        "peak_device_vram_mib": 18516.0,
+        "min_device_free_mib": 29887.0,
+        "peak_temperature_c": 71.0,
+        "peak_power_w": 282.36
+      }
+    }
+  ],
+  "matched_61666_comparison": {
+    "custom_ttft_seconds": 106.58580433391035,
+    "stock_ttft_seconds": 105.50459383428097,
+    "custom_ttft_difference_percent": 1.0247994521713988,
+    "samples_per_runtime": 1,
+    "interpretation": "No demonstrated custom-engine improvement; one measurement per runtime is not a statistical regression finding."
+  },
+  "custom_runtime_audit": "runtime-audit.json",
+  "remaining": "Custom kernels had no calibration winner in the audited startup. Custom prefill bypass reasons and graph replay completion are not fully observable. No custom 128k or 226k result exists."
+}

@@ -1,0 +1,9 @@
+{
+  "samples": 712,
+  "window_start_unix": 1791062882.392812,
+  "window_end_unix": 1791063598.332721,
+  "peak_device_vram_mib": 18516.0,
+  "min_device_free_mib": 29887.0,
+  "peak_temperature_c": 71.0,
+  "peak_power_w": 282.36
+}
