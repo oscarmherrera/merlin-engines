@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--host-cc', default='/usr/bin/gcc-13')
     parser.add_argument('--jobs', type=int, default=8)
     parser.add_argument('--source-cache', type=Path, help='Existing local Git checkout of the pinned runtime')
+    parser.add_argument('--scratch', type=Path, help='New directory for temporary source and objects')
     args = parser.parse_args()
     if not 1 <= args.jobs <= 32:
         parser.error('jobs must be 1..32')
@@ -37,7 +38,10 @@ def main():
     compiler = subprocess.check_output([str(nvcc), '--version'], text=True)
     if 'release 12.' not in compiler:
         parser.error('The resident CUDA build requires CUDA 12.x (later P40 support)')
-    source, build, bundle = output / 'source', output / 'build', output / 'runtime'
+    scratch = args.scratch.resolve() if args.scratch else output
+    if args.scratch:
+        scratch.mkdir(parents=True, exist_ok=False)
+    source, build, bundle = scratch / 'source', scratch / 'build', output / 'runtime'
     repository = str(args.source_cache.resolve()) if args.source_cache else lock['runtime_repository']
     run('git', 'clone', '--depth', '1', '--branch', lock['runtime_tag'], repository, source)
     run(sys.executable, root / 'scripts/apply_runtime.py', source)
@@ -61,7 +65,11 @@ def main():
         if not matches:
             raise RuntimeError('Missing CUDA runtime dependency: ' + pattern)
         for path in matches:
-            shutil.copy2(path, bundle / path.name, follow_symlinks=False)
+            target = bundle / path.name
+            if path.is_symlink():
+                target.symlink_to(os.readlink(path))
+            else:
+                os.link(path, target)
     shutil.copyfile(source / 'LICENSE', bundle / 'LICENSE.llama.cpp')
     manifest = {'engine_revision': engine_revision, 'runtime_revision': lock['runtime_revision'],
                 'endpoint_binding': lock['endpoint_binding'], 'cuda_architectures': ['75'],

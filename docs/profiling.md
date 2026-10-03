@@ -16,6 +16,12 @@ builds the shared libraries, `llama-server`, `llama-bench`, and
 `test-backend-ops`. It stages them in `runtime/` with CUDA user-space libraries
 and a manifest of revisions, compiler identity, and artifact hashes. It never
 loads a model, installs the runtime in a service directory, or starts an endpoint.
+On `.30`, use `--jobs 2 --scratch /tmp/UNIQUE_BUILD` to respect its 12 GB process
+memory limit and avoid charging temporary objects against the home disk quota.
+The staged CUDA dependency files are hard links to the toolkit (both must be on
+the same filesystem); do not modify toolkit libraries after staging a bundle.
+The bundle hashes record their exact content. Extracted download archives can
+be removed after verification; keep NVIDIA's manifest.
 
 The build toolkit uses NVIDIA's CUDA 12.8.1 redistributables: nvcc 12.8.93,
 cudart/CCCL 12.8.90, and cuBLAS 12.8.4.1. Archive SHA256 values come from
