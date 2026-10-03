@@ -7,6 +7,13 @@
 
 #include <cstdint>
 
+static __device__ __forceinline__ float merlin_pq2_add(float sum, float value, unsigned code) {
+    // PQ2 codes are -1, 0, +1, +2. Explicit adds keep symbol accumulation multiply-free.
+    const float magnitude = code == 3 ? __fadd_rn(value, value) : value;
+    const float term = code == 0 ? -magnitude : code == 1 ? 0.0f : magnitude;
+    return __fadd_rn(sum, term);
+}
+
 // A warp owns one output row. Each packed byte is reused across the entire batch.
 template<int batch, bool gated>
 static __global__ void merlin_pq2_decode(
@@ -44,12 +51,9 @@ static __global__ void merlin_pq2_decode(
 #pragma unroll
             for (int i = 0; i < 4; ++i) {
                 const float a = activations[int64_t(n) * k + offset + i];
-                // PQ2's fourth code is +2, even for a nominally ternary model.
-                const float q = float(int((packed >> (2 * i)) & 3) - 1);
-                dot = fmaf(q, a, dot);
+                dot = merlin_pq2_add(dot, a, (packed >> (2 * i)) & 3);
                 if constexpr (gated) {
-                    const float g = float(int((packed_gate >> (2 * i)) & 3) - 1);
-                    gate_dot = fmaf(g, a, gate_dot);
+                    gate_dot = merlin_pq2_add(gate_dot, a, (packed_gate >> (2 * i)) & 3);
                 }
             }
             sums[n] = fmaf(scale, dot, sums[n]);
