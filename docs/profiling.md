@@ -20,6 +20,10 @@ loads a model, installs the runtime in a service directory, or starts an endpoin
 The build toolkit uses NVIDIA's CUDA 12.8.1 redistributables: nvcc 12.8.93,
 cudart/CCCL 12.8.90, and cuBLAS 12.8.4.1. Archive SHA256 values come from
 NVIDIA's `redistrib_12.8.1.json`, retained beside the toolkit. GCC/G++ 13 is used.
+The component archives use `lib/`; the toolkit also needs a `lib64 -> lib`
+symlink for nvcc's linker defaults. If a network clone fails, `--source-cache`
+can name a local Git checkout: the builder clones its committed tree and still
+requires the exact locked revision before applying the overlay.
 Ubuntu 26.04's glibc exposes a known CUDA header incompatibility. The exact
 six-declaration correction in pinned Prism `docs/build.md:253–285` is reproduced
 by `scripts/cuda_glibc_compat.py`; it saves the original header and hashes.

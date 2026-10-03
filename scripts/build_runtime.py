@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--host-cxx', default='/usr/bin/g++-13')
     parser.add_argument('--host-cc', default='/usr/bin/gcc-13')
     parser.add_argument('--jobs', type=int, default=8)
+    parser.add_argument('--source-cache', type=Path, help='Existing local Git checkout of the pinned runtime')
     args = parser.parse_args()
     if not 1 <= args.jobs <= 32:
         parser.error('jobs must be 1..32')
@@ -37,7 +38,8 @@ def main():
     if 'release 12.' not in compiler:
         parser.error('The resident CUDA build requires CUDA 12.x (later P40 support)')
     source, build, bundle = output / 'source', output / 'build', output / 'runtime'
-    run('git', 'clone', '--depth', '1', '--branch', lock['runtime_tag'], lock['runtime_repository'], source)
+    repository = str(args.source_cache.resolve()) if args.source_cache else lock['runtime_repository']
+    run('git', 'clone', '--depth', '1', '--branch', lock['runtime_tag'], repository, source)
     run(sys.executable, root / 'scripts/apply_runtime.py', source)
     environment = dict(os.environ, CUDACXX=str(nvcc), CUDAHOSTCXX=args.host_cxx)
     environment['PATH'] = str(cuda / 'bin') + os.pathsep + environment.get('PATH', '')
