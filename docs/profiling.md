@@ -12,8 +12,10 @@ python3 scripts/build_runtime.py --cuda /home/oscar/.local/merlin-toolchains/cud
 ```
 
 The command checks the pinned source revision, adds the profiling overlay, and
-builds the shared libraries, `llama-server`, `llama-bench`, and
-`test-backend-ops`. It stages them in `runtime/` with CUDA user-space libraries
+builds the shared libraries, `llama-bench`, and `test-backend-ops` for `sm_75`.
+The server, web UI, and examples are disabled. The standard attention variants
+include Q8/Q8; `GGML_CUDA_FA_ALL_QUANTS=OFF` excludes the extra combinations.
+It stages them in `runtime/` with CUDA user-space libraries
 and a manifest of revisions, compiler identity, and artifact hashes. It never
 loads a model, installs the runtime in a service directory, or starts an endpoint.
 On `.30`, use `--jobs 2 --scratch /tmp/UNIQUE_BUILD` to respect its 12 GB process

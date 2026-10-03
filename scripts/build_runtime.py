@@ -49,14 +49,15 @@ def main():
     environment['PATH'] = str(cuda / 'bin') + os.pathsep + environment.get('PATH', '')
     run('cmake', '-S', source, '-B', build,
         '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=ON', '-DGGML_NATIVE=OFF',
-        '-DGGML_CUDA=ON', '-DGGML_CUDA_FA_ALL_QUANTS=ON', '-DCMAKE_CUDA_ARCHITECTURES=75',
+        '-DGGML_CUDA=ON', '-DGGML_CUDA_FA_ALL_QUANTS=OFF', '-DCMAKE_CUDA_ARCHITECTURES=75',
         f'-DCMAKE_CUDA_COMPILER={nvcc}', f'-DCUDAToolkit_ROOT={cuda}',
         f'-DCMAKE_CUDA_HOST_COMPILER={args.host_cxx}', f'-DCMAKE_CXX_COMPILER={args.host_cxx}',
         f'-DCMAKE_C_COMPILER={args.host_cc}',
         '-DCMAKE_INSTALL_RPATH=$ORIGIN', '-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON',
-        '-DLLAMA_CURL=OFF', '-DLLAMA_BUILD_TESTS=ON', env=environment)
+        '-DLLAMA_CURL=OFF', '-DLLAMA_BUILD_TESTS=ON', '-DLLAMA_BUILD_EXAMPLES=OFF',
+        '-DLLAMA_BUILD_SERVER=OFF', '-DLLAMA_BUILD_UI=OFF', env=environment)
     run('cmake', '--build', build, '--parallel', args.jobs,
-        '--target', 'llama-server', 'llama-bench', 'test-backend-ops', env=environment)
+        '--target', 'llama', 'llama-bench', 'test-backend-ops', env=environment)
     shutil.copytree(build / 'bin', bundle, symlinks=True)
     # Stage CUDA user-space dependencies alongside $ORIGIN-linked GGML libraries.
     # The device driver is provided by the eventual target host.
