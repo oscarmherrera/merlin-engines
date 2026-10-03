@@ -65,6 +65,8 @@ struct device_state {
         cudaEvent_t start = nullptr, stop = nullptr;
         drift_history * history = nullptr;
         bool pending = false;
+        uint64_t completion_id = 0;
+        long long submitted_unix_ms = 0;
     };
     std::mutex mutex;
     profile costs;
@@ -74,9 +76,10 @@ struct device_state {
     cudaEvent_t start = nullptr, stop = nullptr;
     std::vector<drift_history> histories;
     std::array<drift_slot, 8> drift{};
-    uint64_t epoch = 0;
+    uint64_t epoch = 0, next_completion = 0;
+    int device_id;
 
-    explicit device_state(int device) {
+    explicit device_state(int device) : device_id(device) {
         const char * configured = std::getenv("MERLIN_ENGINE_PROFILE");
         if (configured) { path = configured; }
         cudaDeviceProp properties{};
@@ -102,8 +105,9 @@ struct device_state {
                 }
             }
         }
-        std::fprintf(stderr, "merlin-engine: calibration_profile=%s mode=%s device=%d\n",
-            loaded ? "matched" : "missing_or_invalid", merlin_dispatch_calibrating() ? "calibrate" : "inference", device);
+        merlin_engine_log("{\"schema\":1,\"event\":\"merlin_profile_status\",\"profile_match\":%s,"
+            "\"mode\":\"%s\",\"device\":%d,\"pid\":%ld,\"unix_ms\":%lld,\"engine_revision\":\"%s\"}\n",
+            loaded ? "true" : "false", merlin_log_mode(), device, (long)getpid(), merlin_log_unix_ms(), MERLIN_ENGINE_BUILD_ID);
     }
 
     void prepare() {
@@ -133,12 +137,14 @@ struct device_state {
             float elapsed = 0;
             CUDA_CHECK(cudaEventElapsedTime(&elapsed, slot.start, slot.stop));
             auto & history = *slot.history;
+            merlin_kernel_completion_log(device_id, slot.completion_id, slot.submitted_unix_ms,
+                history.cost->kernel.c_str(), history.shape.m, history.shape.n, history.shape.k, elapsed);
             history.samples[history.observed++ % history.samples.size()] = elapsed;
             if (history.cost->correct && history.observed >= history.samples.size() &&
                     material_drift(history.samples, history.cost->median_ms)) {
                 history.cost->correct = false;
                 invalidated = true;
-                std::fprintf(stderr,
+                merlin_engine_diagnostic(
                     "merlin-engine: profile_invalidated kernel=%s m=%lld n=%lld k=%lld calibrated_ms=%.6f observed_median_ms=%.6f reason=latency_drift\n",
                     history.cost->kernel.c_str(), (long long)history.shape.m, (long long)history.shape.n,
                     (long long)history.shape.k, history.cost->median_ms, median(history.samples));
@@ -147,7 +153,7 @@ struct device_state {
         }
         if (invalidated) { ++epoch; }
         if (invalidated && !costs.save(path, fingerprint)) {
-            std::fputs("merlin-engine: drift invalidation is in memory only; profile write failed\n", stderr);
+            merlin_engine_status("merlin_profile_save_failure", "drift_in_memory_only", device_id);
         }
     }
 
@@ -160,10 +166,13 @@ struct device_state {
                 break;
             }
         }
-        if (!history || ++history->submissions % 128 != 0) { return nullptr; }
+        if (!history) { return nullptr; }
+        if (++history->submissions != 1 && history->submissions % 128 != 0) { return nullptr; }
         for (auto & slot : drift) {
             if (!slot.pending) {
                 slot.history = history;
+                slot.completion_id = ++next_completion;
+                slot.submitted_unix_ms = merlin_log_unix_ms();
                 return &slot;
             }
         }
@@ -253,6 +262,17 @@ inline merlin_logical_bytes merlin_dispatch_logical_bytes(const ggml_tensor * we
     return {read, ggml_nbytes(output)};
 }
 
+inline void merlin_dispatch_bypass(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
+        const ggml_tensor * input, const ggml_tensor * output, const char * reason, bool fused = false) {
+    const auto workload = ggml_merlin_workload_get();
+    merlin_kernel_log(merlin_workload_phase_name(workload.phase), "prism", ctx.device,
+        weights->ne[1], input->ne[1], weights->ne[0], SIZE_MAX, fused, SIZE_MAX,
+        merlin_dispatch_logical_bytes(weights, input, output), merlin_prefill_reserved_bytes(ctx),
+        workload.sequence_batch, workload.tokens_in_flight,
+        workload.source == GGML_MERLIN_SOURCE_UBATCH ? "llama_ubatch_and_graph_type" :
+        workload.source == GGML_MERLIN_SOURCE_CALIBRATION ? "explicit_calibration_workload" : "unknown", reason);
+}
+
 // Callbacks write the same real output. Only explicit startup calibration repeats them.
 inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_dispatch::key & shape,
         float * output, size_t elements, void (*reference)(void *), void * reference_user,
@@ -285,7 +305,7 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
             const bool correct = reference_finite && merlin_dispatch::compare(storage.reference_output.get(),
                 storage.candidate_output.get(), elements, nmse);
             if (elapsed > 0) { rows.push_back({candidate.id, elapsed, std::isfinite(nmse) ? nmse : 0, correct}); }
-            std::fprintf(stderr,
+            merlin_engine_diagnostic(
                 "merlin-engine: calibration kernel=%s m=%lld n=%lld k=%lld reference_ms=%.6f median_ms=%.6f nmse=%.9g correct=%d\n",
                 candidate.id, (long long)shape.m, (long long)shape.n, (long long)shape.k, reference_ms, elapsed, nmse, int(correct));
         }
@@ -296,9 +316,12 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
         merlin_dispatch::calibration_receipt(shape, rows.size(), reference_finite && reference_ms > 0);
     }
     const auto * selected = merlin_dispatch::select(storage.costs, shape, candidates, candidate_count);
+    const char * reason = selected ? "measured_faster" :
+        !storage.costs.reference(shape) ? "unseen_or_invalid_reference" : "no_correct_faster_candidate";
     const auto observer = merlin_dispatch::capture_observer_current();
     if (selected && capture != cudaStreamCaptureStatusNone && observer.record &&
             !observer.record(observer.user, shape, selected->id)) {
+        reason = "graph_monitor_capacity";
         selected = nullptr; // A graph never embeds a custom selection the bounded monitor cannot track.
     }
     merlin_dispatch::device_state::drift_slot * sample = nullptr;
@@ -316,5 +339,5 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
         selected ? selected->shared_bytes_per_block : SIZE_MAX, logical, merlin_prefill_reserved_bytes(ctx),
         shape.batch, shape.tokens_in_flight,
         ggml_merlin_workload_get().source == GGML_MERLIN_SOURCE_UBATCH ? "llama_ubatch_and_graph_type" :
-        ggml_merlin_workload_get().source == GGML_MERLIN_SOURCE_CALIBRATION ? "explicit_calibration_workload" : "unknown");
+        ggml_merlin_workload_get().source == GGML_MERLIN_SOURCE_CALIBRATION ? "explicit_calibration_workload" : "unknown", reason);
 }

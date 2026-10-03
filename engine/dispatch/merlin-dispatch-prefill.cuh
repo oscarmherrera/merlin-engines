@@ -19,12 +19,22 @@ static bool merlin_dispatch_prefill(ggml_backend_cuda_context & ctx, const ggml_
         const ggml_tensor * input, ggml_tensor * output,
         void (*reference)(ggml_backend_cuda_context &, const ggml_tensor *, const ggml_tensor *, ggml_tensor *)) {
     // Small batches reach central MMVQ, where the native and matrix candidates compete together.
-    if (merlin_dispatch_reference_active() || input->ne[1] <= 8 ||
-            !merlin_prefill_supported(ctx, weights, input, output)) {
+    if (merlin_dispatch_reference_active() || input->ne[1] <= 8) { return false; }
+    if (!merlin_prefill_eligible(ctx, weights, input, output)) {
+        if (weights->type == GGML_TYPE_PQ2_0) {
+            merlin_dispatch_bypass(ctx, weights, input, output, "unsupported_prefill_shape_or_layout");
+        }
+        return false;
+    }
+    if (!merlin_prefill_scratch(ctx)) {
+        merlin_dispatch_bypass(ctx, weights, input, output, "no_reserved_workspace");
         return false;
     }
     const auto workload = ggml_merlin_workload_get();
-    if (!merlin_workload_valid(workload)) { return false; }
+    if (!merlin_workload_valid(workload)) {
+        merlin_dispatch_bypass(ctx, weights, input, output, "unknown_workload");
+        return false;
+    }
     struct arguments {
         ggml_backend_cuda_context & ctx;
         const ggml_tensor * weights, * input;

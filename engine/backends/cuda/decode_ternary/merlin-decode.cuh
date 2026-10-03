@@ -173,10 +173,18 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
         ggml_cuda_mm_fusion_args_device device_fusion) {
     if (merlin_dispatch_reference_active()) { return false; }
     const auto workload = ggml_merlin_workload_get();
-    if (!merlin_workload_valid(workload)) { return false; }
+    if (!merlin_workload_valid(workload)) {
+        merlin_dispatch_bypass(ctx, src0, src1, dst, "unknown_workload", fusion != nullptr);
+        return false;
+    }
     const bool native = merlin_decode_supported(ctx, src0, src1, ids, dst, fusion);
     const bool matrix = !ids && !fusion && merlin_prefill_supported(ctx, src0, src1, dst);
-    if (!native && !matrix) { return false; }
+    if (!native && !matrix) {
+        if (src0->type == GGML_TYPE_PQ2_0) {
+            merlin_dispatch_bypass(ctx, src0, src1, dst, "unsupported_decode_shape_or_fusion", fusion != nullptr);
+        }
+        return false;
+    }
     struct arguments {
         ggml_backend_cuda_context & ctx;
         const ggml_tensor * weights, * input, * ids;

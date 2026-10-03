@@ -80,8 +80,11 @@ inference with profiling unset for performance comparisons.
 
 Set `MERLIN_KERNEL_LOG` to a new absolute JSONL path before starting the endpoint.
 The runtime records the first 256 host dispatches in each matrix-column bucket
-(N=1, 2, 4, 8, or other), then every 1024; without the variable, the first 16 go
-to stderr. Records include the actual microbatch sequence count, tokens in flight,
+(N=1, 2, 4, 8, or other), then every 1024. Without the variable, the same sampled records go
+to stderr, which the nonverbose endpoint suppresses; endpoint experiments must
+use the dedicated file. The same independently opened sink also records profile
+match status, reference-bypass reasons, workspace lifecycle, drift diagnostics and
+GPU completion receipts. Each record identifies calibration or inference mode. Records include the actual microbatch sequence count, tokens in flight,
 workload classification and its source, selected kernel, M/N/K and fusion state.
 Native decode uses zero scratch. CUTLASS reports used Q8 global scratch, shared
 bytes per block, and separately the endpoint context's reserved scratch capacity.
@@ -92,9 +95,15 @@ An unwritable requested log fails explicitly.
 
 These records prove host dispatch selection, not completed GPU execution. CUDA
 graph replays do not repeat host dispatch; `counts_graph_replays: false` makes this
-explicit. Separate `merlin_graph_completion` records on stderr time actual graph
+explicit. Separate `merlin_graph_completion` records in that same file time actual graph
 launches with CUDA events. They include a process-unique monitor ID, submission,
-generation, workload, completion latency and sampling status. Two reusable event
+generation, workload, process ID, submission timestamp, completion latency and
+sampling status. The captured custom-operation count is snapshotted per launch;
+a positive count with GPU completion establishes sampled custom work. Uncaptured
+selected kernels emit `merlin_kernel_completion` after their CUDA stop event is
+ready, sampling the first submission and every 128th per key/kernel with an
+eight-slot ring. A busy ring drops a sample rather than waiting. Host dispatch
+records and calibration records do not establish endpoint GPU execution. Two reusable event
 pairs per graph avoid blocking inference. Pending observations at teardown are
 reported as incomplete, never counted as completed work. Graph latency is not
 attributed to an individual kernel. `MERLIN_CUDA_PROFILE` additionally provides
@@ -115,3 +124,46 @@ outputs and logits, then measure long-context speed and memory. The profiler doe
 not measure physical memory traffic. Small matrix widths reach the MMVQ dispatch
 hook; larger widths reach the matrix hook. Both use the same measured policy;
 this hook routing is not a claimed performance crossover.
+
+## Custom-engine experiment acceptance
+
+`single_request.py` judges retrieval correctness only; its verdict explicitly does
+not prove engine viability. Stock baseline correctness remains useful on its own.
+After collecting runtime telemetry, use the separate offline evaluator:
+
+```sh
+python3 benchmarks/engine_acceptance.py --case /absolute/custom-case --baseline /absolute/stock-case --telemetry /absolute/kernels.jsonl --output /absolute/acceptance.json
+```
+
+The custom case needs `runtime-identity.json` collected from the actual endpoint:
+`pid`, the full 40-character `engine_revision`, `captured_unix` within five minutes
+before the request, `evidence_source: "proc_maps_and_sha256"`, and
+`runtime_libraries`. The latter contains exactly five `{name, path, sha256}` rows
+for `libllama.so`, `libggml.so`, `libggml-base.so`, `libggml-cpu.so` and
+`libggml-cuda.so`. Paths must be absolute mapped library paths under
+`merlin-engines-<first seven revision characters>` and hashes are SHA256 of those
+files. This evidence is captured by the authorized test operator; the evaluator
+never infers a runtime from endpoint timing or source checkout state.
+
+The evaluator requires a matching profile event for that PID/revision, distinct
+inference-only GPU completion receipts submitted within the request window, a
+correct answer and lower TTFT against a cold baseline with matching request,
+model/device alias/configuration and token usage. Optional `--minimum-improvement`
+sets the minimum fractional improvement. Missing runtime evidence, calibration-only
+activity, host submissions, reference-only completions, unmatched baselines or no
+benefit cannot pass. One successful case is labeled `custom_case_improved`, not
+full engine viability; logits, batching, context range and stability remain separate.
+
+## Logging overhead control
+
+Logging stays enabled by default. `MERLIN_ENGINE_LOG_DISABLE=1` is an explicit
+controlled A/B diagnostic: it bypasses logger formatting, counters and file writes,
+while retaining the same kernels, calibration profile, CUDA event sampling and
+drift decisions. It emits no execution proof and cannot pass custom-engine
+acceptance. Change only this setting between matched logging-overhead trials.
+
+`python3 scripts/measure_logging_cost.py` measures the actual production logger
+on the host: 100,000 dispatch calls across five buckets plus one completion per
+128 calls, alternating three file-enabled and three disabled runs. This measures
+formatting/locking/file flushing only. It does not measure GPU event overhead or
+endpoint throughput; those require matched endpoint trials on the target GPU.

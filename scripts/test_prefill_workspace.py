@@ -78,7 +78,7 @@ int main() {
             for name in ('merlin-prefill-workspace.cuh','merlin-prefill-workspace-impl.cuh'):
                 shutil.copyfile(PREFILL/name,temp/name)
             (temp/'test.cpp').write_text(body)
-            subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror',str(temp/'test.cpp'),'-o',str(temp/'test')],check=True)
+            subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-I',str(ROOT/'engine/telemetry'),str(temp/'test.cpp'),'-o',str(temp/'test')],check=True)
             subprocess.run([str(temp/'test')],check=True,capture_output=True)
 
     def test_overlay_rejects_wrong_anchor_without_write(self):

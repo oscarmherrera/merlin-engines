@@ -3,6 +3,7 @@
 #include "merlin-dispatch.cuh"
 #include "merlin-graph-policy.h"
 #include "merlin-workload.h"
+#include "merlin-engine-log.h"
 #include <unordered_map>
 #include <atomic>
 #include <chrono>
@@ -18,10 +19,13 @@ struct monitor {
     struct sample {
         cudaEvent_t start = nullptr, stop = nullptr;
         bool pending = false;
+        uint64_t custom_operations = 0;
         uint64_t monitor_id = 0, generation = 0, submission = 0, signature = 0, epoch = 0;
         int64_t batch = 0, tokens = 0;
         int phase = -1;
+        long long submitted_unix_ms = 0;
     };
+    uint64_t custom_operations = 0;
     const uint64_t id = next_monitor_id();
     ggml_cuda_graph * owner;
     uint64_t epoch = 0, generation = 0, submissions = 0, signature = 0;
@@ -47,13 +51,14 @@ struct monitor {
     static bool record(void * user, const merlin_dispatch::key & shape, const char * kernel) {
         auto & self = *static_cast<monitor *>(user);
         for (const auto & item : self.selected) {
-            if (item.shape.fields() == shape.fields() && item.kernel == kernel) { return true; }
+            if (item.shape.fields() == shape.fields() && item.kernel == kernel) { ++self.custom_operations; return true; }
         }
         if (self.selected.size() == 256) { return false; }
+        ++self.custom_operations;
         self.selected.push_back({shape, kernel});
         return true;
     }
-    void reset() { ++generation; window = {}; selected.clear(); }
+    void reset() { ++generation; window = {}; selected.clear(); custom_operations = 0; }
 };
 
 using graphs = std::unordered_map<const void *, std::unique_ptr<monitor>>;
@@ -95,17 +100,20 @@ inline uint64_t signature(const ggml_cgraph * graph) {
 
 inline void log_completion(const monitor::sample & item, int device,
         double elapsed, bool used_for_drift) {
+    if (!merlin_engine_log_enabled()) { return; }
     const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
-    std::fprintf(stderr,
+    merlin_engine_log(
         "{\"schema\":1,\"event\":\"merlin_graph_completion\",\"device\":%d,"
         "\"monitor_id\":%llu,\"unix_ms\":%lld,\"graph_signature\":%llu,\"generation\":%llu,\"submission\":%llu,"
         "\"sequence_batch\":%lld,\"tokens_in_flight\":%lld,\"phase\":%d,\"epoch\":%llu,"
         "\"elapsed_ms\":%.6f,\"gpu_completion\":true,\"counts_graph_replays\":true,"
-        "\"sampled\":true,\"used_for_drift\":%s,\"latency_scope\":\"whole_graph\"}\n",
+        "\"sampled\":true,\"used_for_drift\":%s,\"latency_scope\":\"whole_graph\","
+        "\"completed_custom_operations\":%llu,\"mode\":\"%s\",\"pid\":%ld,\"submitted_unix_ms\":%lld}\n",
         device, (unsigned long long) item.monitor_id, (long long) timestamp, (unsigned long long) item.signature, (unsigned long long) item.generation,
         (unsigned long long) item.submission, (long long) item.batch, (long long) item.tokens, item.phase,
-        (unsigned long long) item.epoch, elapsed, used_for_drift ? "true" : "false");
+        (unsigned long long) item.epoch, elapsed, used_for_drift ? "true" : "false",
+        (unsigned long long) item.custom_operations, merlin_log_mode(), (long)getpid(), item.submitted_unix_ms);
 }
 
 inline void poll(monitor & graph, merlin_dispatch::device_state & storage, int device) {
@@ -134,7 +142,7 @@ inline void poll(monitor & graph, merlin_dispatch::device_state & storage, int d
     if (!retired) { return; }
     ++storage.epoch;
     const bool saved = storage.costs.save(storage.path, storage.fingerprint);
-    std::fprintf(stderr,
+    merlin_engine_diagnostic(
         "merlin-engine: profile_invalidated reason=graph_cohort_latency_drift "
         "device=%d epoch=%llu records=%zu baseline_ms=%.6f observed_median_ms=%.6f "
         "per_kernel_cause_known=false profile_saved=%d\n", device,
@@ -149,7 +157,7 @@ inline void drain_ready(monitor & graph, ggml_backend_cuda_context & ctx) {
     size_t pending = 0;
     for (const auto & item : graph.samples) { pending += item.pending; }
     if (pending) {
-        std::fprintf(stderr, "merlin-engine: graph_monitor_release incomplete_samples=%zu device=%d no_wait=true\n",
+        merlin_engine_diagnostic( "merlin-engine: graph_monitor_release incomplete_samples=%zu device=%d no_wait=true\n",
             pending, ctx.device);
     }
 }
@@ -229,6 +237,8 @@ inline void launch(ggml_backend_cuda_context & ctx, cudaGraphExec_t instance) {
     CUDA_CHECK(cudaGraphLaunch(instance, ctx.stream()));
     if (sample) {
         CUDA_CHECK(cudaEventRecord(sample->stop, ctx.stream()));
+        sample->submitted_unix_ms = merlin_log_unix_ms();
+        sample->custom_operations = graph->custom_operations;
         sample->monitor_id = graph->id;
         sample->generation = graph->generation;
         sample->submission = graph->submissions;

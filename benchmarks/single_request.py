@@ -159,7 +159,8 @@ def execute(args):
         result = stream_once(args.endpoint, body, output, args.seconds)
         expected_answer = json.loads((output / "expectation.json").read_text())["answer"]
         passed = json.loads(result["content"]) == expected_answer and result["finish_reason"] == "stop"
-        write_json(output / "verdict.json", {"retrieval_passed": passed})
+        write_json(output / "verdict.json", {"retrieval_passed": passed, "acceptance_scope": "retrieval_correctness_only",
+                                               "engine_viability_proven": False})
         if not passed:
             raise RuntimeError("Retrieval answer or finish reason failed")
         print(json.dumps({k: result[k] for k in ("usage", "ttft_seconds", "wall_seconds", "finish_reason")}))

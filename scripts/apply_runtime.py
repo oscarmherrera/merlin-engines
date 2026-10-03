@@ -45,6 +45,7 @@ def main():
     path.write_text(text)
     shutil.copyfile(root / 'engine/telemetry/merlin-profile.cuh', path.parent / 'merlin-profile.cuh')
     shutil.copyfile(root / 'engine/telemetry/merlin-kernel-log.cuh', path.parent / 'merlin-kernel-log.cuh')
+    shutil.copyfile(root / 'engine/telemetry/merlin-engine-log.h', path.parent / 'merlin-engine-log.h')
     for header in (root / 'engine/dispatch').glob('merlin-dispatch*'):
         shutil.copyfile(header, path.parent / header.name)
     apply_decode(args.source, root)

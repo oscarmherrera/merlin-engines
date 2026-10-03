@@ -1,7 +1,18 @@
 #include "merlin-graph-monitor.cuh"
+#include "merlin-kernel-log.cuh"
+#include <fcntl.h>
 
 int main(int argc, char ** argv) {
-    assert(argc == 2);
+    assert(argc == 3);
+    assert(setenv("MERLIN_KERNEL_LOG", argv[2], 1) == 0);
+    const int saved_stderr = dup(2);
+    const int muted = open("/dev/null", O_WRONLY);
+    assert(saved_stderr >= 0 && muted >= 0 && dup2(muted, 2) >= 0);
+    close(muted);
+    merlin_engine_status("merlin_test_lifecycle", "fd2_suppressed", 0);
+    merlin_kernel_completion_log(0, 1, merlin_log_unix_ms(), "custom", 1, 1, 128, 1.0);
+    merlin_kernel_log("single_token_per_sequence", "prism", 0, 1, 1, 128, 0, false);
+
     ggml_backend_cuda_context ctx;
     ggml_tensor tensor;
     ggml_tensor * nodes[]{&tensor};
@@ -80,4 +91,6 @@ int main(int argc, char ** argv) {
     }
     merlin_graph::release(ctx);
     assert(merlin_graph::all().contexts.empty());
+    assert(dup2(saved_stderr, 2) >= 0);
+    close(saved_stderr);
 }

@@ -1,3 +1,4 @@
+#include "merlin-engine-log.h"
 #pragma once
 
 #include "merlin-prefill-workspace.cuh"
@@ -17,7 +18,7 @@ static void reserve_stream(ggml_backend_cuda_context & ctx, scratch_owner & owne
     if (!owner.streams[stream]) {
         ggml_cuda_set_device(ctx.device);
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&owner.streams[stream]), merlin_prefill_slab_bytes));
-        std::fprintf(stderr,
+        merlin_engine_diagnostic(
             "merlin-engine: scratch_reserved device=%d stream=%d reserved_bytes=%zu lifetime=backend\n",
             ctx.device, stream, merlin_prefill_slab_bytes);
     }
