@@ -1,7 +1,7 @@
 {
   "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
   "design_version": "0.1, 2026-10-03",
-  "review_state": "WORK IN PROGRESS: checked against implementation, not a completion claim",
+  "review_state": "Reviewed against original design and compiled source5c373dd. OverallPARTIAL: outstanding gaps and GPU acceptance below.",
   "requirements": [
     {
       "requirement": "Bonsai core and endpoint integration",
@@ -13,24 +13,24 @@
       "requirement": "Packed resident weights; no model-sized expansion",
       "status": "IMPLEMENTED_IN_SOURCE",
       "finding": "Packed weights remain in VRAM; bounded unpacked int8 tiles live only in shared memory. Global scratch holds Q8 activations, not expanded model weights. GPU memory proof pending.",
-      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; engine/backends/cuda/prefill_cutlass/merlin-prefill.cuh"
+      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; engine/backends/cuda/prefill_cutlass/merlin-prefill.cu"
     },
     {
       "requirement": "Original arithmetic, scales and Hadamard transforms",
       "status": "IMPLEMENTED_IN_SOURCE",
       "finding": "Owner-approved PQ2/Q8 integer path, existing Prism quantizer, half weight scales and per32 float activation scales; dispatch remains after graph Hadamard handling. Floating accumulation order still requires numeric proof.",
-      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill.cuh; engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; scripts/apply_prefill.py"
+      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill.cu; engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; scripts/apply_prefill.py"
     },
     {
       "requirement": "CUTLASS/CUDA fused ternary-to-tile prefill",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp, double-buffered32x32/64x64 candidate tiles; compiler and GPU results pending.",
+      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp, double-buffered32x32/64x64 candidate tiles; CUDA compilation passed; GPU results pending.",
       "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; runtime.lock.json"
     },
     {
       "requirement": "Independent tile/pipeline/prompt tuning",
       "status": "PARTIAL",
-      "finding": "Two Turing tile candidates registered; pipeline depth fixed2. No measured tuning results yet. Ampere deliberately later.",
+      "finding": "Two Turing tile candidates implemented; pipeline depth fixed2. Transform fusion remains upstream rather than fused into CUTLASS, and neither prompt-length nor fusion tuning has hardware evidence. Ampere later by owner sequence.",
       "evidence": "engine/dispatch/merlin-dispatch-prefill.cuh"
     },
     {
@@ -60,7 +60,7 @@
     {
       "requirement": "Startup warmup and persisted median calibration",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Metadata-derived representative shapes; explicit startup process invokes real backend graph; two warmups and five event samples per route. Compile/execution pending.",
+      "finding": "Metadata-derived representative shapes; explicit startup process invokes real backend graph; two warmups and five event samples per route. Compiled; execution pending.",
       "evidence": "scripts/calibrate_runtime.py; scripts/calibration_shapes.py; engine/dispatch/merlin-dispatch.cuh"
     },
     {
@@ -85,12 +85,12 @@
       "requirement": "Bounded scratch and preallocated workspace",
       "status": "PARTIAL",
       "finding": "Q8 cap128MiB; calibration host buffers256MiB/output. Startup calibration is a separate process and cannot preallocate the endpoint CUDA context. Endpoint pool reused on demand; explicit preallocation still missing.",
-      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill.cuh; engine/dispatch/merlin-dispatch.cuh"
+      "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill.cu; engine/dispatch/merlin-dispatch.cuh"
     },
     {
       "requirement": "Profiler latency/bytes/workspace/selection/end-to-end",
       "status": "PARTIAL",
-      "finding": "Operation timings, calibration costs, route/workspace logs and endpoint TTFT harness exist. Actual bytes moved and captured replay completion attribution are incomplete.",
+      "finding": "Operation/calibration timings, route/global-scratch/shared-per-block logs and endpoint TTFT harness exist. Actual bytes moved and captured replay completion attribution remain incomplete.",
       "evidence": "engine/telemetry/merlin-profile.cuh; engine/telemetry/merlin-kernel-log.cuh; benchmarks/single_request.py"
     },
     {
@@ -108,7 +108,7 @@
     {
       "requirement": "Correctness/logits, stability and speed acceptance gates",
       "status": "NOT_VERIFIED",
-      "finding": "No new CUDA build or GPU evidence yet. Full logits, long context, batching/prefix, memory and improvement remain acceptance work.",
+      "finding": "CUDA build passed; no new GPU evidence yet. Full logits, long context, batching/prefix, memory and improvement remain acceptance work.",
       "evidence": "docs/prefill-kernel.md"
     },
     {
@@ -123,5 +123,19 @@
       "finding": "No SpecKit work until viable/functioning; subtree gate waived only.",
       "evidence": "README.md"
     }
-  ]
+  ],
+  "validation": {
+    "engine_revision": "5c373dd5ab9e41df35ffe6b9fe6759b94c4085a8",
+    "cuda_build": "PASS",
+    "cuda_build_seconds": 79.538,
+    "cuda_architecture": "75",
+    "build_jobs": 6,
+    "local_tests_passed": 20,
+    "artifact_host": "10.200.55.30",
+    "artifact_directory": "/home/oscar/merlin-engine-builds/5c373dd",
+    "endpoint": "Existing ABI-compatible endpoint binary reused; no Go endpoint code changes",
+    "gpu_correctness": "NOT RUN",
+    "gpu_performance": "NOT RUN",
+    "deployed": false
+  }
 }

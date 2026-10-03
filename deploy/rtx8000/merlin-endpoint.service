@@ -3,11 +3,11 @@ Description=merlin-endpoint: Ternary-Bonsai-2-27B-PQ2_0 (CUDA sm_75, Quadro RTX 
 After=network-online.target
 Wants=network-online.target
 
-# Experimental engine 1e148d0; installed with its endpoint and runtime bundle.
+# Experimental engine 5c373dd; installed with its endpoint and runtime bundle.
 [Service]
 Type=simple
-Environment=YZMA_LIB=/opt/merlin/lib/merlin-engines-1e148d0
-Environment=LD_LIBRARY_PATH=/opt/merlin/lib/merlin-engines-1e148d0
+Environment=YZMA_LIB=/opt/merlin/lib/merlin-engines-5c373dd
+Environment=LD_LIBRARY_PATH=/opt/merlin/lib/merlin-engines-5c373dd
 ExecStartPre=/usr/local/sbin/wait-for-gpu.sh nvidia 180
 ExecStart=/usr/local/libexec/merlin-engine-endpoint \
   --model /model/Ternary-Bonsai-2-27B-PQ2_0.gguf \
@@ -21,7 +21,7 @@ ExecStart=/usr/local/libexec/merlin-engine-endpoint \
   --batch-size 4096 \
   --ubatch-size 2048 \
   --prefix-reuse \
-  --lib /opt/merlin/lib/merlin-engines-1e148d0
+  --lib /opt/merlin/lib/merlin-engines-5c373dd
 Restart=on-failure
 RestartSec=10
 TimeoutStartSec=900

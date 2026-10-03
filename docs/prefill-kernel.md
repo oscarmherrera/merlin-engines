@@ -60,5 +60,5 @@ dispatch for M=67, N=16/17/32/65, K=128/5120/17408. Existing batch-1/2/4/8 cases
 cover the small-N competitor. Tests must establish actual candidate execution;
 an exit-zero run with skipped cases does not validate the kernels.
 
-Status: CUDA source written; compiler, GPU numeric, endpoint and performance
-validation pending. No SpecKit or AMD implementation is included.
+Status: CUDA compilation passed at engine5c373dd; GPU numeric, endpoint and
+performance validation pending. No SpecKit or AMD implementation is included.
