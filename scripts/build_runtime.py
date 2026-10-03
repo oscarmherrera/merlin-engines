@@ -20,7 +20,7 @@ def main():
     parser.add_argument('--cuda', type=Path, required=True)
     parser.add_argument('--host-cxx', default='/usr/bin/g++-13')
     parser.add_argument('--host-cc', default='/usr/bin/gcc-13')
-    parser.add_argument('--jobs', type=int, default=8)
+    parser.add_argument('--jobs', type=int, default=6)
     parser.add_argument('--source-cache', type=Path, help='Existing local Git checkout of the pinned runtime')
     parser.add_argument('--scratch', type=Path, help='New directory for temporary source and objects')
     args = parser.parse_args()
@@ -47,6 +47,8 @@ def main():
     run(sys.executable, root / 'scripts/apply_runtime.py', source)
     environment = dict(os.environ, CUDACXX=str(nvcc), CUDAHOSTCXX=args.host_cxx)
     environment['PATH'] = str(cuda / 'bin') + os.pathsep + environment.get('PATH', '')
+    environment['LD_LIBRARY_PATH'] = os.pathsep.join(filter(None, (
+        str(cuda / 'lib'), environment.get('LD_LIBRARY_PATH'))))
     run('cmake', '-S', source, '-B', build,
         '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=ON', '-DGGML_NATIVE=OFF',
         '-DGGML_CUDA=ON', '-DGGML_CUDA_FA_ALL_QUANTS=OFF', '-DCMAKE_CUDA_ARCHITECTURES=75',

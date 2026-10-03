@@ -8,7 +8,7 @@ the integration path; its `prism-adfffbe` binding is unchanged.
 Build directly on go-dev `.30`, from a clean pulled engine commit:
 
 ```sh
-python3 scripts/build_runtime.py --cuda /home/oscar/.local/merlin-toolchains/cuda-12.8.1 --output /home/oscar/merlin-engine-builds/UNIQUE_BUILD --jobs 8
+python3 scripts/build_runtime.py --cuda /home/oscar/.local/merlin-toolchains/cuda-12.8.1 --output /home/oscar/merlin-engine-builds/UNIQUE_BUILD --jobs 6
 ```
 
 The command checks the pinned source revision, adds the profiling overlay, and
@@ -18,8 +18,11 @@ include Q8/Q8; `GGML_CUDA_FA_ALL_QUANTS=OFF` excludes the extra combinations.
 It stages them in `runtime/` with CUDA user-space libraries
 and a manifest of revisions, compiler identity, and artifact hashes. It never
 loads a model, installs the runtime in a service directory, or starts an endpoint.
-On `.30`, use `--jobs 2 --scratch /tmp/UNIQUE_BUILD` to respect its 12 GB process
-memory limit and avoid charging temporary objects against the home disk quota.
+On `.30`, use `--jobs 6 --scratch /tmp/UNIQUE_BUILD` for its six assigned CPUs
+and to avoid charging temporary objects against the home disk quota.
+The builder exposes the toolkit's `lib/` through `LD_LIBRARY_PATH` while linking:
+the installed `$ORIGIN` search path alone cannot resolve those dependencies
+until the final bundle has been staged.
 The staged CUDA dependency files are hard links to the toolkit (both must be on
 the same filesystem); do not modify toolkit libraries after staging a bundle.
 The bundle hashes record their exact content. Extracted download archives can
