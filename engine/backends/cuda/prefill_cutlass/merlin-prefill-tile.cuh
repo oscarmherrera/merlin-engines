@@ -22,8 +22,8 @@ struct tile_config {
         float db[2][Tile];
     };
     struct prefetched {
-        uint8_t packed[Tile*k/(4*threads)];
-        int8_t q8[Tile*k/threads];
+        uint16_t packed[Tile*k/(8*threads)];
+        uint32_t q8[Tile*k/(4*threads)];
         float da;
         float db[2];
     };
@@ -51,18 +51,19 @@ static __device__ __forceinline__ typename tile_config<Tile>::prefetched prefetc
     const int64_t block = inner0 / QK_PQ2_0;
     const int offset = inner0 % QK_PQ2_0;
 #pragma unroll
-    for (int i = 0; i < Tile*64/(4*128); ++i) {
+    for (int i = 0; i < Tile*64/(8*128); ++i) {
         const int index = tid + i*128;
-        const int row = index / 16;
-        const int byte = index % 16;
-        next.packed[i] = row0 + row < m ? weights[(row0 + row)*(k/QK_PQ2_0) + block].qs[offset/4 + byte]
-                                      : 0x55;
+        const int row = index / 8;
+        const int byte = (index % 8)*2;
+        next.packed[i] = row0 + row < m ? *reinterpret_cast<const uint16_t *>(
+            weights[(row0 + row)*(k/QK_PQ2_0) + block].qs + offset/4 + byte) : 0x5555;
     }
 #pragma unroll
-    for (int i = 0; i < Tile*64/128; ++i) {
+    for (int i = 0; i < Tile*64/(4*128); ++i) {
         const int index = tid + i*128;
-        const int col = index / 64;
-        next.q8[i] = col0 + col < n ? input[block*n + col0 + col].qs[offset + index%64] : 0;
+        const int col = index / 16;
+        next.q8[i] = col0 + col < n ? *reinterpret_cast<const uint32_t *>(
+            input[block*n + col0 + col].qs + offset + (index%16)*4) : 0;
     }
     if (tid < Tile) {
         next.da = row0 + tid < m ? __half2float(weights[(row0 + tid)*(k/QK_PQ2_0) + block].d) : 0.0f;
@@ -81,19 +82,20 @@ static __device__ __forceinline__ void stage_tile(typename tile_config<Tile>::st
     const typename tile_config<Tile>::LayoutB layout_b(64);
     const int tid = threadIdx.x;
 #pragma unroll
-    for (int i = 0; i < Tile*64/(4*128); ++i) {
+    for (int i = 0; i < Tile*64/(8*128); ++i) {
         const int index = tid + i*128;
-        const int row = index / 16;
-        const int inner = (index%16)*4;
-#pragma unroll
-        for (int j = 0; j < 4; ++j) {
-            dst.a[layout_a({row, inner + j})] = int8_t(int((next.packed[i] >> (2*j)) & 3) - 1);
-        }
+        const int row = index / 8;
+        const int inner = (index%8)*8;
+        // Prism's packed lookup preserves all four PQ2 symbols, including +2.
+        const uint32_t qe = __byte_perm(0x020100ff, 0x020100ff, next.packed[i]);
+        const uint32_t qo = __byte_perm(0x020100ff, 0x020100ff, next.packed[i] >> 2);
+        *reinterpret_cast<uint32_t *>(dst.a + layout_a({row, inner})) = __byte_perm(qe, qo, 0x5140);
+        *reinterpret_cast<uint32_t *>(dst.a + layout_a({row, inner + 4})) = __byte_perm(qe, qo, 0x7362);
     }
 #pragma unroll
-    for (int i = 0; i < Tile*64/128; ++i) {
+    for (int i = 0; i < Tile*64/(4*128); ++i) {
         const int index = tid + i*128;
-        dst.b[layout_b({index%64, index/64})] = next.q8[i];
+        *reinterpret_cast<uint32_t *>(dst.b + layout_b({(index%16)*4, index/16})) = next.q8[i];
     }
     if (tid < Tile) {
         dst.da[tid] = next.da;
