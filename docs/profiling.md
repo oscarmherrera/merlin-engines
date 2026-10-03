@@ -43,6 +43,14 @@ before that correction and passed afterward. This does not establish GPU correct
 
 ## Capture and report
 
+The first check after an authorized model load is VRAM usage, before any inference.
+Save `nvidia-smi --query-gpu=index,name,memory.total,memory.used,memory.free --format=csv`
+and `nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv`.
+Identify the endpoint with `systemctl show merlin-endpoint -p MainPID --value`.
+Record available loader weight-buffer and KV-buffer allocation messages and the
+engine's `scratch_reserved` records separately. Process/device totals do not by
+themselves identify those components; unavailable components remain unknown.
+
 On a separately authorized GPU test, set `MERLIN_CUDA_PROFILE` to a **new absolute
 file path** when launching the staged runtime through the existing endpoint or
 the staged backend test tool. An existing path is refused to preserve evidence.

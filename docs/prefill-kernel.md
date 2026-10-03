@@ -85,6 +85,7 @@ operator operand footprints from actual tensor sizes (including fused operands),
 exclude internal scratch, and are explicitly not measured DRAM traffic. Reference
 workspace/shared usage is unknown (`null`), not a claimed zero.
 
-Status: previous two-stage CUDA compilation passed at engine5c373dd. The current
-workspace lifecycle, logger JSON and overlay guards pass four focused CPU tests;
-current CUDA compilation, GPU numeric, endpoint and performance validation remain pending. No SpecKit or AMD implementation is included.
+Status: integrated CUDA compilation passed at engine dd4940e in 84.522 seconds.
+The combined scripts suite passes 13 tests, including workspace lifecycle, logger
+JSON and graph monitoring. GPU numerical, endpoint, VRAM and performance validation
+remain pending. No SpecKit or AMD implementation is included.

@@ -1,7 +1,7 @@
 {
   "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
   "design_version": "0.1, 2026-10-03",
-  "review_state": "RTX8000 implementation gaps closed in source and host-tested; integrated CUDA build and hardware acceptance pending. No performance claim.",
+  "review_state": "RTX8000 runtime compiled and host-tested. GPU correctness, load VRAM, context behavior, hardware tuning and performance acceptance remain unverified.",
   "requirements": [
     {
       "requirement": "Bonsai core and endpoint integration",
@@ -24,7 +24,7 @@
     {
       "requirement": "CUTLASS/CUDA fused ternary-to-tile prefill",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp. Four candidates compare32x32/64x64 tiles and1/2 shared stages; current compilation and GPU validation pending.",
+      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp. Four candidates compare32x32/64x64 tiles and1/2 shared stages; CUDA compilation passed; GPU validation pending.",
       "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; runtime.lock.json"
     },
     {
@@ -108,7 +108,7 @@
     {
       "requirement": "Correctness/logits, stability and speed acceptance gates",
       "status": "NOT_VERIFIED",
-      "finding": "CUDA build passed; no new GPU evidence yet. Full logits, long context, batching/prefix, memory and improvement remain acceptance work.",
+      "finding": "Integrated CUDA build passed at dd4940e. GPU logits, long context, batching/prefix, load VRAM, stability and improvement remain unverified.",
       "evidence": "docs/prefill-kernel.md"
     },
     {
@@ -139,12 +139,19 @@
     "deployed": false
   },
   "validation": {
-    "cuda_build": "PENDING",
+    "cuda_build": "PASS",
     "local_script_tests_passed": 13,
     "workload_transport": "PASS: pinned headers, cross-DSO and threads",
     "gpu_correctness": "NOT RUN",
     "gpu_performance": "NOT RUN",
     "deployed": false,
-    "first_check_after_model_load": "Record device/process VRAM before first inference; record available loader/KV and reserved-scratch evidence separately."
+    "first_check_after_model_load": "Record device/process VRAM before first inference; record available loader/KV and reserved-scratch evidence separately.",
+    "engine_revision": "dd4940ef9602bb65e7febf7cb2043cc48ad791ae",
+    "cuda_build_seconds": 84.522,
+    "cuda_architecture": "75",
+    "build_jobs": 6,
+    "artifact_host": "10.200.55.30",
+    "artifact_directory": "/home/oscar/merlin-engine-builds/dd4940e",
+    "endpoint": "Existing ABI-compatible endpoint binary reused; no Go endpoint code changes"
   }
 }
