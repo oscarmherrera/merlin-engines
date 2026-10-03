@@ -36,20 +36,39 @@ def apply(source: Path, root: Path):
         '                       printer *      output_printer) {\n'
         '        const merlin_workload_scope merlin_scope(merlin_workload);\n'
         '        mode = MODE_TEST;\n')
+    text = replace_once(text,
+        'static std::vector<std::unique_ptr<test_case>> make_test_cases_from_file(const char * path) {',
+        '#include "merlin-calibration-case.h"\n\n'
+        'static std::vector<std::unique_ptr<test_case>> make_test_cases_from_file(const char * path) {')
     anchor = '        test_cases.emplace_back(new test_generic_op(op, type, ne, op_params, sources, std::move(name)));\n'
-    text = replace_once(text, anchor, anchor +
-        '        iss >> std::ws;\n'
-        '        if (!iss.eof()) {\n'
-        '            auto & workload = test_cases.back()->merlin_workload;\n'
-        '            if (!(iss >> workload.sequence_batch >> workload.tokens_in_flight >> workload.phase)) {\n'
-        '                throw std::runtime_error("Invalid explicit workload metadata");\n'
-        '            }\n'
-        '            workload.source = GGML_MERLIN_SOURCE_CALIBRATION;\n'
-        '            iss >> std::ws;\n'
-        '            if (!merlin_workload_valid(workload) || !iss.eof()) {\n'
-        '                throw std::runtime_error("Invalid explicit workload metadata");\n'
-        '            }\n'
-        '        }\n')
+    replacement = r'''        ggml_merlin_workload workload{0, 0, GGML_MERLIN_PHASE_UNKNOWN, GGML_MERLIN_SOURCE_UNKNOWN};
+        int64_t fusion = 0;
+        int fixture = 0;
+        iss >> std::ws;
+        if (!iss.eof()) {
+            if (!(iss >> workload.sequence_batch >> workload.tokens_in_flight >> workload.phase >> fusion >> fixture)) {
+                throw std::runtime_error("Invalid explicit workload metadata");
+            }
+            workload.source = GGML_MERLIN_SOURCE_CALIBRATION;
+            iss >> std::ws;
+            const int64_t glu = (fusion >> 8) - 1;
+            const int64_t expected = (fusion & 1) ? (fusion & ~int64_t(7)) | 1 | (fusion & 2 ? 6 : 0) : 2;
+            const bool valid_fusion = fusion == 0 || (fusion > 0 && ne[1] == 1 && fusion == expected &&
+                (!(fusion & 1) || glu == GGML_GLU_OP_SWIGLU || glu == GGML_GLU_OP_GEGLU || glu == GGML_GLU_OP_SWIGLU_OAI));
+            if (!merlin_workload_valid(workload) || !iss.eof() || !valid_fusion ||
+                    (fixture != 0 && fixture != 1) || op != GGML_OP_MUL_MAT || type != GGML_TYPE_F32 ||
+                    sources.size() != 2 || sources[0].type != GGML_TYPE_PQ2_0 || sources[1].type != GGML_TYPE_F32) {
+                throw std::runtime_error("Invalid explicit workload metadata");
+            }
+        }
+        if (merlin_workload_valid(workload)) {
+            test_cases.emplace_back(new test_merlin_calibration(op, type, ne, op_params, sources, std::move(name), fusion, fixture));
+        } else {
+            test_cases.emplace_back(new test_generic_op(op, type, ne, op_params, sources, std::move(name)));
+        }
+        test_cases.back()->merlin_workload = workload;
+'''
+    text = replace_once(text, anchor, replacement)
     backend.write_text(backend_text)
     llama.write_text(llama_text)
     tests.write_text(text)
@@ -57,3 +76,5 @@ def apply(source: Path, root: Path):
                             ('merlin-workload-impl.h', 'ggml/src'),
                             ('merlin-workload-llama.h', 'src')]:
         shutil.copyfile(root / 'engine/core' / name, source / directory / name)
+
+    shutil.copyfile(root / 'engine/tests/merlin-calibration-case.h', source / 'tests/merlin-calibration-case.h')

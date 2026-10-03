@@ -17,18 +17,20 @@ def verify_receipts(receipt, manifest, requested):
     observed = set()
     for line in receipt.read_text().splitlines():
         record = json.loads(line)
-        if (record.get('schema') != 2 or record.get('profile_saved') is not True or
-                record.get('reference_valid') is not True or record.get('records', 0) < 1 or
+        if (record.get('schema') != 3 or record.get('profile_saved') is not True or
+                record.get('reference_valid') is not True or record.get('records', 0) < 2 or
                 any(record.get(field) != manifest[field] for field in
                     ('engine_revision', 'runtime_revision', 'cutlass_revision'))):
             raise ValueError('Calibration receipt does not establish a valid current profile')
         shape = (record['m'], record['n'], record['k'], record['sequence_batch'],
-                 record['tokens_in_flight'], record['phase'])
+                 record['tokens_in_flight'], record['phase'], record['fusion'])
         if shape not in requested:
             raise ValueError('Unexpected calibration shape')
         observed.add(shape)
     if not observed:
         raise ValueError('Zero calibration shapes executed')
+    if requested - observed:
+        raise ValueError('Requested calibration workloads did not execute')
     return observed
 
 
@@ -48,9 +50,10 @@ def main():
     profile.parent.mkdir(parents=True, exist_ok=True)
     args.log_dir.mkdir(parents=True, exist_ok=True)
     shapes_path = args.log_dir / 'calibration-shapes.txt'
+    projections, fusion_shapes = set(), set()
     with args.model.open('rb') as stream:
-        matrices = pq2_shapes(stream)
-    shapes = list(backend_shapes(matrices, args.ubatch_size))
+        matrices = pq2_shapes(stream, projections, fusion_shapes)
+    shapes = list(backend_shapes(matrices, args.ubatch_size, projections, fusion_shapes))
     if not shapes:
         raise SystemExit('No PQ2 shapes available for calibration')
     shapes_path.write_text('\n'.join(shapes) + '\n')

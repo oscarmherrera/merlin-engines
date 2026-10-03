@@ -211,13 +211,13 @@ inline void calibration_receipt(const key & shape, size_t records, bool referenc
     }();
     if (!file) { return; }
     std::fprintf(file,
-        "{\"schema\":2,\"engine_revision\":\"%s\",\"runtime_revision\":\"%s\","
+        "{\"schema\":3,\"engine_revision\":\"%s\",\"runtime_revision\":\"%s\","
         "\"cutlass_revision\":\"%s\",\"m\":%lld,\"n\":%lld,\"k\":%lld,"
-        "\"sequence_batch\":%lld,\"tokens_in_flight\":%lld,\"phase\":%lld,"
+        "\"sequence_batch\":%lld,\"tokens_in_flight\":%lld,\"phase\":%lld,\"fusion\":%lld,"
         "\"records\":%zu,\"reference_valid\":%s,\"profile_saved\":true}\n",
         MERLIN_ENGINE_BUILD_ID, MERLIN_PRISM_REVISION, MERLIN_CUTLASS_REVISION,
         (long long)shape.m, (long long)shape.n, (long long)shape.k,
-        (long long)shape.batch, (long long)shape.tokens_in_flight, (long long)shape.phase, records,
+        (long long)shape.batch, (long long)shape.tokens_in_flight, (long long)shape.phase, (long long)shape.fusion, records,
         reference_valid ? "true" : "false");
     if (std::fflush(file) || std::ferror(file)) {
         GGML_ABORT("merlin-engine: cannot write calibration receipt");

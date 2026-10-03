@@ -52,7 +52,7 @@ def skip_value(stream, kind, depth=0):
         raise ValueError('Unsupported GGUF metadata type')
 
 
-def pq2_shapes(stream):
+def pq2_shapes(stream, projections=None, fusion_shapes=None):
     if read_exact(stream, 4) != b'GGUF' or number(stream, 'I') not in (2, 3):
         raise ValueError('Expected GGUF v2 or v3')
     tensors, metadata = number(stream, 'Q'), number(stream, 'Q')
@@ -63,7 +63,7 @@ def pq2_shapes(stream):
         skip_value(stream, number(stream, 'I'))
     shapes = set()
     for _ in range(tensors):
-        skip(stream, number(stream, 'Q'))
+        name = read_exact(stream, number(stream, 'Q')).decode('utf-8')
         rank = number(stream, 'I')
         if not 1 <= rank <= 4:
             raise ValueError('Invalid tensor rank')
@@ -75,21 +75,63 @@ def pq2_shapes(stream):
             if k <= 0 or m <= 0 or k % 128:
                 raise ValueError('Unsupported PQ2 matrix shape')
             shapes.add((m, k))
+            if projections is not None and name in ('output.weight', 'token_embd.weight'):
+                projections.add((m, k))
+            if fusion_shapes is not None and name.endswith(('ffn_up.weight', 'ffn_gate.weight',
+                    'ffn_down.weight', 'attn_output.weight', 'ssm_out.weight')):
+                fusion_shapes.add((m, k))
     return sorted(shapes)
 
 
-def backend_shapes(matrices, ubatch):
+# Bias only, then gate GLU with/without both biases; matches the CUDA fusion signature.
+FUSIONS = (2, 513, 519, 769, 775, 1025, 1031)
+
+
+def shape_row(m, n, k, sequences, tokens, phase, fusion=0, fixture=0):
+    row_bytes = k // 128 * 34
+    return (f'{MUL_MAT_OP} 0 {m} {n} 1 1 0 2 '
+            f'{PQ2_TYPE} {k} {m} 1 1 34 {row_bytes} {row_bytes*m} {row_bytes*m} '
+            f'0 {k} {n} 1 1 4 {k*4} {k*n*4} {k*n*4} '
+            f'pq2_m{m}_n{n}_k{k}_f{fusion}_c{fixture} {sequences} {tokens} {phase} {fusion} {fixture}')
+
+
+def backend_shapes(matrices, ubatch, projections=(), fusion_shapes=None):
+    matrices = list(matrices)
+    projections = set(projections)
+    fusion_shapes = set(matrices) - projections if fusion_shapes is None else set(fusion_shapes)
+    if not matrices:
+        return
     tokens = sorted({n for n in (1, 2, 4, 8, 16, 128, 512, ubatch) if n <= ubatch})
+    seen = set()
+    rows = []
+
+    def add(m, n, k, sequences, total_tokens, phase, fusion=0, fixture=0):
+        key = (m, n, k, sequences, total_tokens, phase, fusion)
+        if key not in seen and m * n * 4 <= MAX_OUTPUT_BYTES:
+            seen.add(key)
+            rows.append(shape_row(*key, fixture))
+
+    # All-code controls have unique small dimensions and run through the same CUDA dispatch.
+    for n in (1, 2, 4, 8):
+        if n <= ubatch:
+            add(67, n, 256, n, n, 0, fixture=1)
+    for fusion in FUSIONS:
+        add(67, 1, 256, 1, 1, 0, fusion, fixture=1)
     for m, k in matrices:
-        row_bytes = k // 128 * 34
         for n in tokens:
-            if m * n * 4 > MAX_OUTPUT_BYTES:
-                continue  # runtime keeps the reference for these uncalibrated shapes
             for sequences, total_tokens, phase in representative_workloads(n):
-                yield (f'{MUL_MAT_OP} 0 {m} {n} 1 1 0 2 '
-                       f'{PQ2_TYPE} {k} {m} 1 1 34 {row_bytes} {row_bytes*m} {row_bytes*m} '
-                       f'0 {k} {n} 1 1 4 {k*4} {k*n*4} {k*n*4} '
-                       f'pq2_m{m}_n{n}_k{k} {sequences} {total_tokens} {phase}')
+                add(m, n, k, sequences, total_tokens, phase)
+        if (m, k) in fusion_shapes:
+            for fusion in FUSIONS:
+                add(m, 1, k, 1, 1, 0, fusion)
+    # Logits may select one output per sequence from a larger prompt microbatch.
+    projection_tokens = sorted(set(tokens) | ({66} if ubatch >= 66 else set()))
+    for m, k in projections:
+        for n in (1, 2, 4, 8):
+            for total_tokens in projection_tokens:
+                if n <= ubatch and total_tokens >= 2 * n:
+                    add(m, n, k, n, total_tokens, 1)
+    yield from rows
 
 
 def representative_workloads(tokens):
@@ -106,7 +148,7 @@ def representative_workloads(tokens):
 def requested_workload(line):
     parts = line.split()
     return (int(parts[2]), int(parts[3]), int(parts[9]),
-            int(parts[-3]), int(parts[-2]), int(parts[-1]))
+            int(parts[-5]), int(parts[-4]), int(parts[-3]), int(parts[-2]))
 
 
 def main():
@@ -117,9 +159,10 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.ubatch <= 65536:
         parser.error('ubatch must be 1..65536')
+    projections, fusion_shapes = set(), set()
     with args.model.open('rb') as stream:
-        matrices = pq2_shapes(stream)
-    rows = list(backend_shapes(matrices, args.ubatch))
+        matrices = pq2_shapes(stream, projections, fusion_shapes)
+    rows = list(backend_shapes(matrices, args.ubatch, projections, fusion_shapes))
     if not rows:
         raise SystemExit('No compatible PQ2 calibration shapes found')
     args.output.write_text('\n'.join(rows) + '\n')
