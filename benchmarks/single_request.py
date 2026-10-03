@@ -38,8 +38,9 @@ def prepare(output):
     lines = [f"Record {i:04d}: component sample-{i:04d}; status archived; region north."
              for i in range(1024)]
     lines.insert(512, "Record TARGET: the verification code is CEDAR-731.")
-    text = ("Read the records and return only a JSON object with the verification "
-            "code from Record TARGET.\n" + "\n".join(lines))
+    text = ('Read the records and return only a JSON object with exactly one key, '
+            '"code", whose string value is the verification code from Record TARGET.\n'
+            + "\n".join(lines))
     request = {
         "messages": [{"role": "system", "content": "Answer using the supplied records."},
                      {"role": "user", "content": text}],

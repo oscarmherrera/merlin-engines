@@ -14,8 +14,12 @@ phase. The streaming proposal is retained in `docs/` as reference only.
 
 ## Status
 
-Repository and baseline tooling are prepared. **The hybrid resident engine is
-not implemented, compiled, or benchmarked yet.** No speedup is claimed.
+Repository setup and the [first RTX 8000 baseline](docs/benchmarks/rtx8000-2026-10-03/README.md)
+are complete: 22,583 input tokens, 30.60 seconds to first token, 31.11 seconds
+total, and the correct retrieved value. The report preserves a checker false
+failure caused by an unspecified JSON key; the request generator now specifies it.
+**The hybrid resident engine is not implemented, compiled, or benchmarked yet.**
+No speedup is claimed.
 The owner has deferred SpecKit work until a viable implementation functions.
 The owner has also waived the change gate in this subtree repository during
 the experimental phase. Correctness tests and performance validation still

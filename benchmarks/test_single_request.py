@@ -59,7 +59,10 @@ class BaselineCLI(unittest.TestCase):
                 self.wfile.write(b": prefill\n\n")
                 self.wfile.flush()
                 time.sleep(0.03)
-                answer = '{"code":"CEDAR-731"}' if owner.mode != "wrong" else '{"code":"WRONG"}'
+                # The real pilot used verification_code when no key was requested.
+                prompt = owner.request["messages"][-1]["content"]
+                key = "code" if '"code"' in prompt else "verification_code"
+                answer = json.dumps({key: "CEDAR-731" if owner.mode != "wrong" else "WRONG"})
                 frames = [{"choices": [{"delta": {"content": answer}}]}]
                 if owner.mode != "incomplete":
                     frames += [{"choices": [{"delta": {}, "finish_reason": "stop"}]},
