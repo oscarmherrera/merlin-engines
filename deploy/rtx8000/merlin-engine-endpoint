@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+mkdir -p /var/log/merlin-engines
+run_log_dir=$(mktemp -d /var/log/merlin-engines/rtx8000-XXXXXXXX)
+export MERLIN_KERNEL_LOG="$run_log_dir/kernels.jsonl"
+printf 'merlin-engine: kernel log %s\n' "$MERLIN_KERNEL_LOG" >&2
+exec /usr/local/bin/merlin-endpoint "$@"
