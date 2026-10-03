@@ -7,20 +7,18 @@
 
 #include <cstdint>
 
-static __device__ __forceinline__ float merlin_pq2_add(float sum, float value, unsigned code) {
-    // PQ2 codes are -1, 0, +1, +2. Explicit adds keep symbol accumulation multiply-free.
-    const float magnitude = code == 3 ? __fadd_rn(value, value) : value;
-    const float term = code == 0 ? -magnitude : code == 1 ? 0.0f : magnitude;
-    return __fadd_rn(sum, term);
+static __device__ __forceinline__ int merlin_pq2_add(int sum, int value, unsigned code) {
+    const int magnitude = code == 3 ? value + value : value;
+    return sum + (code == 0 ? -magnitude : code == 1 ? 0 : magnitude);
 }
 
-// A warp owns one output row. Each packed byte is reused across the entire batch.
+// A warp owns one output row; each lane accumulates complete 32-value integer dot groups.
 template<int batch, bool gated>
 static __global__ void merlin_pq2_decode(
         const block_pq2_0 * __restrict__ weights,
-        const float * __restrict__ activations,
+        const block_q8_1 * __restrict__ activations,
         float * __restrict__ output,
-        int64_t m, int64_t k, ggml_cuda_mm_fusion_args_device fusion) {
+        int64_t m, int64_t k, int64_t activation_stride, ggml_cuda_mm_fusion_args_device fusion) {
     const int lane = threadIdx.x;
     const int64_t row = int64_t(blockIdx.x) * blockDim.y + threadIdx.y;
     if (row >= m) {
@@ -34,32 +32,34 @@ static __global__ void merlin_pq2_decode(
     }
     float sums[batch] = {};
     float gates[batch] = {};
-    for (int64_t b = 0; b < blocks; ++b) {
-        const unsigned packed = w[b].qs[lane];
+    // Match Prism's 32-value Q8 dot/scaling boundary inside each 128-weight PQ2 block.
+    for (int64_t chunk = lane; chunk < k / QK8_1; chunk += 32) {
+        const int64_t b = chunk / 4;
+        const int packed_offset = (chunk % 4) * 8;
         const float scale = __half2float(w[b].d);
-        unsigned packed_gate = 0;
         float gate_scale = 0;
-        if constexpr (gated) {
-            packed_gate = gate[b].qs[lane];
-            gate_scale = __half2float(gate[b].d);
-        }
-        const int64_t offset = b * QK_PQ2_0 + lane * 4;
+        if constexpr (gated) { gate_scale = __half2float(gate[b].d); }
 #pragma unroll
         for (int n = 0; n < batch; ++n) {
-            float dot = 0;
-            float gate_dot = 0;
+            const block_q8_1 & activation = activations[int64_t(n) * activation_stride + chunk];
+            int dot = 0, gate_dot = 0;
 #pragma unroll
-            for (int i = 0; i < 4; ++i) {
-                const float a = activations[int64_t(n) * k + offset + i];
-                dot = merlin_pq2_add(dot, a, (packed >> (2 * i)) & 3);
-                if constexpr (gated) {
-                    gate_dot = merlin_pq2_add(gate_dot, a, (packed_gate >> (2 * i)) & 3);
+            for (int byte = 0; byte < 8; ++byte) {
+                const unsigned packed = w[b].qs[packed_offset + byte];
+                unsigned packed_gate = 0;
+                if constexpr (gated) { packed_gate = gate[b].qs[packed_offset + byte]; }
+#pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    const int value = activation.qs[4 * byte + i];
+                    dot = merlin_pq2_add(dot, value, (packed >> (2 * i)) & 3);
+                    if constexpr (gated) {
+                        gate_dot = merlin_pq2_add(gate_dot, value, (packed_gate >> (2 * i)) & 3);
+                    }
                 }
             }
-            sums[n] = fmaf(scale, dot, sums[n]);
-            if constexpr (gated) {
-                gates[n] = fmaf(gate_scale, gate_dot, gates[n]);
-            }
+            const float activation_scale = __low2float(activation.ds);
+            sums[n] += scale * activation_scale * dot;
+            if constexpr (gated) { gates[n] += gate_scale * activation_scale * gate_dot; }
         }
     }
 #pragma unroll
@@ -116,19 +116,18 @@ static bool merlin_decode_bias(const ggml_tensor * bias, const ggml_tensor * dst
 
 template<int batch>
 static void merlin_launch_decode(ggml_backend_cuda_context & ctx,
-        const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst,
-        ggml_cuda_mm_fusion_args_device fusion) {
+        const ggml_tensor * src0, const ggml_tensor * /* src1 */, ggml_tensor * dst,
+        ggml_cuda_mm_fusion_args_device fusion, const block_q8_1 * activations, int64_t activation_stride) {
     const dim3 threads(32, 4);
     const dim3 blocks((src0->ne[1] + 3) / 4);
     const auto * weights = static_cast<const block_pq2_0 *>(src0->data);
-    const auto * activations = static_cast<const float *>(src1->data);
     auto * output = static_cast<float *>(dst->data);
     if (fusion.gate) {
         merlin_pq2_decode<batch, true><<<blocks, threads, 0, ctx.stream()>>>(
-            weights, activations, output, src0->ne[1], src0->ne[0], fusion);
+            weights, activations, output, src0->ne[1], src0->ne[0], activation_stride, fusion);
     } else {
         merlin_pq2_decode<batch, false><<<blocks, threads, 0, ctx.stream()>>>(
-            weights, activations, output, src0->ne[1], src0->ne[0], fusion);
+            weights, activations, output, src0->ne[1], src0->ne[0], activation_stride, fusion);
     }
     CUDA_CHECK(cudaGetLastError());
 }
@@ -167,10 +166,12 @@ static bool merlin_decode_supported(ggml_backend_cuda_context & ctx,
     return true;
 }
 
+template<typename Quantize, typename Reference>
 static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
         const ggml_tensor * src0, const ggml_tensor * src1, const ggml_tensor * ids,
         ggml_tensor * dst, const ggml_cuda_mm_fusion_args_host * fusion,
-        ggml_cuda_mm_fusion_args_device device_fusion) {
+        ggml_cuda_mm_fusion_args_device device_fusion, const block_q8_1 * activations,
+        int64_t activation_stride, Quantize prepare_q8, Reference baseline) {
     if (merlin_dispatch_reference_active()) { return false; }
     const auto workload = ggml_merlin_workload_get();
     if (!merlin_workload_valid(workload)) {
@@ -191,22 +192,26 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
         ggml_tensor * output;
         const ggml_cuda_mm_fusion_args_host * fusion;
         ggml_cuda_mm_fusion_args_device device_fusion;
-    } args{ctx, src0, src1, ids, dst, fusion, device_fusion};
+        const block_q8_1 * activations;
+        int64_t activation_stride;
+        Quantize & prepare_q8;
+        Reference & baseline;
+    } args{ctx, src0, src1, ids, dst, fusion, device_fusion, activations, activation_stride, prepare_q8, baseline};
     const auto reference = [](void * opaque) {
         auto & a = *static_cast<arguments *>(opaque);
-        merlin_dispatch_reference_scope scope;
-        ggml_cuda_mul_mat_vec_q(a.ctx, a.weights, a.input, a.ids, a.output, a.fusion);
+        a.baseline();
     };
     merlin_dispatch_candidate candidates[5]{};
     size_t count = 0;
     if (native) {
-        candidates[count++] = {"pq2_f32_warp", 0, [](void * opaque) {
+        candidates[count++] = {"pq2_q8_1_addsub_warp", size_t(src1->ne[1] * activation_stride) * sizeof(block_q8_1), [](void * opaque) {
             auto & a = *static_cast<arguments *>(opaque);
+            a.prepare_q8();
             switch (a.input->ne[1]) {
-                case 1: merlin_launch_decode<1>(a.ctx, a.weights, a.input, a.output, a.device_fusion); break;
-                case 2: merlin_launch_decode<2>(a.ctx, a.weights, a.input, a.output, a.device_fusion); break;
-                case 4: merlin_launch_decode<4>(a.ctx, a.weights, a.input, a.output, a.device_fusion); break;
-                case 8: merlin_launch_decode<8>(a.ctx, a.weights, a.input, a.output, a.device_fusion); break;
+                case 1: merlin_launch_decode<1>(a.ctx, a.weights, a.input, a.output, a.device_fusion, a.activations, a.activation_stride); break;
+                case 2: merlin_launch_decode<2>(a.ctx, a.weights, a.input, a.output, a.device_fusion, a.activations, a.activation_stride); break;
+                case 4: merlin_launch_decode<4>(a.ctx, a.weights, a.input, a.output, a.device_fusion, a.activations, a.activation_stride); break;
+                case 8: merlin_launch_decode<8>(a.ctx, a.weights, a.input, a.output, a.device_fusion, a.activations, a.activation_stride); break;
             }
         }, &args};
     }

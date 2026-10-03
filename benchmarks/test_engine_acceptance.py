@@ -74,7 +74,7 @@ class EngineAcceptance(unittest.TestCase):
         self.assertIsNotNone(result['missing_runtime_proof'])
 
     def test_actual_uncaptured_custom_receipt_is_accepted(self):
-        receipt = dict(self.completed, event='merlin_kernel_completion', completion_id=7, kernel='pq2_f32_warp')
+        receipt = dict(self.completed, event='merlin_kernel_completion', completion_id=7, kernel='pq2_q8_1_addsub_warp')
         self.assertTrue(self.verdict([self.profile, receipt])['experiment_passed'])
 
     def test_bad_answer_or_unmatched_profile_fails(self):

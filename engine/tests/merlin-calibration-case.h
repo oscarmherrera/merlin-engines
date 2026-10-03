@@ -32,9 +32,10 @@ struct test_merlin_calibration : test_generic_op {
         if (fusion) { test_case::initialize_tensors(ctx); }
         else { test_generic_op::initialize_tensors(ctx); }
         if (!packed_fixture) { return; }
-        unsigned operand = 0;
+        unsigned operand = 0, float_operand = 0;
         for (ggml_tensor * t = ggml_get_first_tensor(ctx); t; t = ggml_get_next_tensor(ctx, t)) {
-            if (t->op != GGML_OP_NONE || t->view_src) { continue; }
+            if (t->op != GGML_OP_NONE || t->view_src ||
+                    std::find(sentinels.begin(), sentinels.end(), t) != sentinels.end()) { continue; }
             if (t->type == GGML_TYPE_PQ2_0) {
                 GGML_ASSERT(ggml_type_size(t->type) == 34 && ggml_blck_size(t->type) == 128);
                 std::vector<uint8_t> bytes(ggml_nbytes(t));
@@ -51,6 +52,15 @@ struct test_merlin_calibration : test_generic_op {
                 }
                 ggml_backend_tensor_set(t, bytes.data(), 0, bytes.size());
                 ++operand;
+            } else if (t->type == GGML_TYPE_F32) {
+                // Binary fractions and a fixed unsigned generator reproduce activation/bias inputs.
+                std::vector<float> values(ggml_nelements(t));
+                uint32_t state = 0x9e3779b9u + ++float_operand;
+                for (float & value : values) {
+                    state = state * 1664525u + 1013904223u;
+                    value = (int32_t(state >> 21) - 1024) / 1024.0f;
+                }
+                ggml_backend_tensor_set(t, values.data(), 0, values.size() * sizeof(float));
             }
         }
     }
