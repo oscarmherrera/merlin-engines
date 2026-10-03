@@ -71,19 +71,28 @@ inference with profiling unset for performance comparisons.
 ## Kernel selection and build progress
 
 Set `MERLIN_KERNEL_LOG` to a new absolute JSONL path before starting the endpoint.
-The runtime records each phase/batch's first 256 host dispatches, then every 1024;
-without the variable, its first 16 dispatches per phase/batch go to stderr.
-Records contain timestamp, phase, selected kernel, device, M/N/K, fusion state and
-workspace bytes. Decode uses zero scratch; prefill reports shared bytes per CUDA
-block and allocates zero global scratch. No prompt, activation or weight values
-are logged. An unwritable requested log fails explicitly.
+The runtime records the first 256 host dispatches in each matrix-column bucket
+(N=1, 2, 4, 8, or other), then every 1024; without the variable, the first 16 go
+to stderr. Records include the actual microbatch sequence count, tokens in flight,
+workload classification and its source, selected kernel, M/N/K and fusion state.
+Native decode uses zero scratch. CUTLASS reports used Q8 global scratch, shared
+bytes per block, and separately the endpoint context's reserved scratch capacity.
+Unknown reference workspace is `null`. Logical operand read/write footprints
+are explicitly estimates excluding scratch and repeated/cache traffic; they are
+not measured DRAM transactions. No tensor values or prompt text are logged.
+An unwritable requested log fails explicitly.
 
 These records prove host dispatch selection, not completed GPU execution. CUDA
 graph replays do not repeat host dispatch; `counts_graph_replays: false` makes this
-explicit. `MERLIN_CUDA_PROFILE` additionally provides bounded operation completion
-timings and disables CUDA graphs for that diagnostic run. Leave profiling unset
-for performance measurements. The endpoint's existing request/prefill/decode logs
-supply ongoing request progress while graphs replay.
+explicit. Separate `merlin_graph_completion` records on stderr time actual graph
+launches with CUDA events. They include a process-unique monitor ID, submission,
+generation, workload, completion latency and sampling status. Two reusable event
+pairs per graph avoid blocking inference. Pending observations at teardown are
+reported as incomplete, never counted as completed work. Graph latency is not
+attributed to an individual kernel. `MERLIN_CUDA_PROFILE` additionally provides
+bounded operation completion timings and disables CUDA graphs for that diagnostic
+run. Leave it unset for performance measurements. The endpoint's existing request
+logs and `benchmarks/single_request.py` provide end-to-end timing.
 
 The builder prints timestamped START/DONE records and elapsed time for each
 command; redirect stdout and stderr to a persistent build log. The final manifest
@@ -93,7 +102,8 @@ revision and exact CMake source path, with the source restored clean before appl
 the new overlay. Preserve and verify the prior overlay before restoring it. It is
 not a way to reuse objects across different upstream versions.
 
-Remaining evidence: compile both kernels, exercise them on RTX8000, compare outputs
-and logits, then measure long-context speed and memory. The operation profiler does
-not measure memory traffic. The fixed N=16 prefill boundary is a supported-shape
-boundary, not a measured crossover.
+Remaining hardware evidence: exercise the combined runtime on RTX8000, compare
+outputs and logits, then measure long-context speed and memory. The profiler does
+not measure physical memory traffic. Small matrix widths reach the MMVQ dispatch
+hook; larger widths reach the matrix hook. Both use the same measured policy;
+this hook routing is not a claimed performance crossover.

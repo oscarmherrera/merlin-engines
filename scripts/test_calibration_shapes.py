@@ -2,7 +2,7 @@ import io
 import struct
 import unittest
 
-from calibration_shapes import MAX_OUTPUT_BYTES, backend_shapes, pq2_shapes
+from calibration_shapes import MAX_OUTPUT_BYTES, backend_shapes, pq2_shapes, requested_workload
 
 
 def u32(value):
@@ -53,14 +53,19 @@ class CalibrationShapesTest(unittest.TestCase):
 
     def test_batch_matrix_and_packed_strides(self):
         lines = list(backend_shapes([(17408, 5120)], 2048))
-        self.assertEqual(len(lines), 8)
-        self.assertEqual([int(line.split()[3]) for line in lines], [1, 2, 4, 8, 16, 128, 512, 2048])
-        self.assertEqual(lines[-1],
+        self.assertEqual(len(lines), 32)
+        self.assertEqual(sorted({int(line.split()[3]) for line in lines}), [1, 2, 4, 8, 16, 128, 512, 2048])
+        self.assertIn(
                          '29 0 17408 2048 1 1 0 2 142 5120 17408 1 1 34 1360 23674880 23674880 '
-                         '0 5120 2048 1 1 4 20480 41943040 41943040 pq2_m17408_n2048_k5120')
+                         '0 5120 2048 1 1 4 20480 41943040 41943040 pq2_m17408_n2048_k5120 1 2048 1', lines)
+        keys = {requested_workload(line) for line in lines}
+        self.assertIn((17408, 4, 5120, 4, 4, 0), keys)
+        self.assertIn((17408, 4, 5120, 1, 4, 1), keys)
+        self.assertIn((17408, 4, 5120, 2, 4, 1), keys)
+        self.assertIn((17408, 4, 5120, 2, 4, 2), keys)
 
     def test_workspace_bound_and_small_ubatch(self):
-        self.assertEqual(len(list(backend_shapes([(67, 128)], 4))), 3)
+        self.assertEqual(len(list(backend_shapes([(67, 128)], 4))), 7)
         for line in backend_shapes([(200000, 5120)], 2048):
             fields = line.split()
             self.assertLessEqual(int(fields[2]) * int(fields[3]) * 4, MAX_OUTPUT_BYTES)

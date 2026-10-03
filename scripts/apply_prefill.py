@@ -1,6 +1,7 @@
 """Integrate the packed PQ2 prefill kernel into pinned Prism's production dispatcher."""
 from pathlib import Path
 import shutil
+from apply_workspace import apply as apply_workspace
 
 
 def apply(source: Path, root: Path) -> None:
@@ -36,3 +37,4 @@ def apply(source: Path, root: Path) -> None:
     test_path.write_text(tests)
     for name in ('merlin-prefill.cuh', 'merlin-prefill.cu', 'merlin-prefill-tile.cuh'):
         shutil.copyfile(root / 'engine/backends/cuda/prefill_cutlass' / name, path.parent / name)
+    apply_workspace(source, root)

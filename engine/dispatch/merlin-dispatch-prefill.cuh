@@ -3,6 +3,18 @@
 #include "merlin-dispatch.cuh"
 #include "merlin-prefill.cuh"
 
+// Startup reserves only for a measured CUTLASS candidate that can beat Prism, or calibration.
+static bool merlin_prefill_profile_eligible(int device) {
+    if (ggml_cuda_info().devices[device].cc != GGML_CUDA_CC_TURING) { return false; }
+    if (merlin_dispatch_calibrating()) { return true; }
+    auto & storage = merlin_dispatch::state(device);
+    std::lock_guard<std::mutex> lock(storage.mutex);
+    for (const auto & row : storage.costs.entries) {
+        if (storage.costs.choose(row.first, merlin_dispatch::cutlass_candidates, 4) >= 0) { return true; }
+    }
+    return false;
+}
+
 static bool merlin_dispatch_prefill(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
         const ggml_tensor * input, ggml_tensor * output,
         void (*reference)(ggml_backend_cuda_context &, const ggml_tensor *, const ggml_tensor *, ggml_tensor *)) {
@@ -11,6 +23,8 @@ static bool merlin_dispatch_prefill(ggml_backend_cuda_context & ctx, const ggml_
             !merlin_prefill_supported(ctx, weights, input, output)) {
         return false;
     }
+    const auto workload = ggml_merlin_workload_get();
+    if (!merlin_workload_valid(workload)) { return false; }
     struct arguments {
         ggml_backend_cuda_context & ctx;
         const ggml_tensor * weights, * input;
@@ -24,18 +38,28 @@ static bool merlin_dispatch_prefill(ggml_backend_cuda_context & ctx, const ggml_
     };
     const size_t workspace = merlin_prefill_workspace_bytes(input);
     const merlin_dispatch_candidate candidates[] = {
-        {"pq2_cutlass_32x32x64", workspace, [](void * opaque) {
+        {merlin_dispatch::cutlass_narrow, workspace, [](void * opaque) {
             auto & a = *static_cast<arguments *>(opaque);
             merlin_prefill_launch(a.ctx, a.weights, a.input, a.output);
         }, &args, merlin_prefill_shared_bytes(false)},
-        {"pq2_cutlass_64x64x64", workspace, [](void * opaque) {
+        {merlin_dispatch::cutlass_wide, workspace, [](void * opaque) {
             auto & a = *static_cast<arguments *>(opaque);
             merlin_prefill_launch_wide(a.ctx, a.weights, a.input, a.output);
         }, &args, merlin_prefill_shared_bytes(true)},
+        {merlin_dispatch::cutlass_narrow_single, workspace, [](void * opaque) {
+            auto & a = *static_cast<arguments *>(opaque);
+            merlin_prefill_launch_single(a.ctx, a.weights, a.input, a.output);
+        }, &args, merlin_prefill_shared_bytes(false, true)},
+        {merlin_dispatch::cutlass_wide_single, workspace, [](void * opaque) {
+            auto & a = *static_cast<arguments *>(opaque);
+            merlin_prefill_launch_wide_single(a.ctx, a.weights, a.input, a.output);
+        }, &args, merlin_prefill_shared_bytes(true, true)},
     };
     const merlin_dispatch::key shape{ggml_cuda_info().devices[ctx.device].cc, GGML_OP_MUL_MAT,
-        weights->ne[1], input->ne[1], weights->ne[0], input->ne[1], input->ne[1], weights->type, 1, 0};
+        weights->ne[1], input->ne[1], weights->ne[0], workload.sequence_batch, workload.tokens_in_flight,
+        weights->type, workload.phase, 0};
     merlin_dispatch_run(ctx, shape, static_cast<float *>(output->data), ggml_nelements(output), baseline, &args,
-        candidates, sizeof(candidates) / sizeof(candidates[0]));
+        candidates, sizeof(candidates) / sizeof(candidates[0]),
+        merlin_dispatch_logical_bytes(weights, input, output));
     return true;
 }

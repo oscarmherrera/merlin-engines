@@ -168,6 +168,8 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
         ggml_tensor * dst, const ggml_cuda_mm_fusion_args_host * fusion,
         ggml_cuda_mm_fusion_args_device device_fusion) {
     if (merlin_dispatch_reference_active()) { return false; }
+    const auto workload = ggml_merlin_workload_get();
+    if (!merlin_workload_valid(workload)) { return false; }
     const bool native = merlin_decode_supported(ctx, src0, src1, ids, dst, fusion);
     const bool matrix = !ids && !fusion && merlin_prefill_supported(ctx, src0, src1, dst);
     if (!native && !matrix) { return false; }
@@ -183,7 +185,7 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
         merlin_dispatch_reference_scope scope;
         ggml_cuda_mul_mat_vec_q(a.ctx, a.weights, a.input, a.ids, a.output, a.fusion);
     };
-    merlin_dispatch_candidate candidates[3]{};
+    merlin_dispatch_candidate candidates[5]{};
     size_t count = 0;
     if (native) {
         candidates[count++] = {"pq2_f32_warp", 0, [](void * opaque) {
@@ -198,14 +200,22 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
     }
     if (matrix) {
         const size_t workspace = merlin_prefill_workspace_bytes(src1);
-        candidates[count++] = {"pq2_cutlass_32x32x64", workspace, [](void * opaque) {
+        candidates[count++] = {merlin_dispatch::cutlass_narrow, workspace, [](void * opaque) {
             auto & a = *static_cast<arguments *>(opaque);
             merlin_prefill_launch(a.ctx, a.weights, a.input, a.output);
         }, &args, merlin_prefill_shared_bytes(false)};
-        candidates[count++] = {"pq2_cutlass_64x64x64", workspace, [](void * opaque) {
+        candidates[count++] = {merlin_dispatch::cutlass_wide, workspace, [](void * opaque) {
             auto & a = *static_cast<arguments *>(opaque);
             merlin_prefill_launch_wide(a.ctx, a.weights, a.input, a.output);
         }, &args, merlin_prefill_shared_bytes(true)};
+        candidates[count++] = {merlin_dispatch::cutlass_narrow_single, workspace, [](void * opaque) {
+            auto & a = *static_cast<arguments *>(opaque);
+            merlin_prefill_launch_single(a.ctx, a.weights, a.input, a.output);
+        }, &args, merlin_prefill_shared_bytes(false, true)};
+        candidates[count++] = {merlin_dispatch::cutlass_wide_single, workspace, [](void * opaque) {
+            auto & a = *static_cast<arguments *>(opaque);
+            merlin_prefill_launch_wide_single(a.ctx, a.weights, a.input, a.output);
+        }, &args, merlin_prefill_shared_bytes(true, true)};
     }
     int64_t fusion_key = 0;
     if (fusion) {
@@ -213,8 +223,9 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
         if (fusion->gate) { fusion_key |= (int64_t(fusion->glu_op) + 1) << 8; }
     }
     const merlin_dispatch::key shape{ggml_cuda_info().devices[ctx.device].cc, GGML_OP_MUL_MAT,
-        src0->ne[1], src1->ne[1], src0->ne[0], src1->ne[1], src1->ne[1], src0->type, 0, fusion_key};
+        src0->ne[1], src1->ne[1], src0->ne[0], workload.sequence_batch, workload.tokens_in_flight,
+        src0->type, workload.phase, fusion_key};
     merlin_dispatch_run(ctx, shape, static_cast<float *>(dst->data), ggml_nelements(dst), reference, &args,
-        candidates, count);
+        candidates, count, merlin_dispatch_logical_bytes(src0, src1, dst, fusion));
     return true;
 }

@@ -9,6 +9,8 @@ from apply_decode import apply as apply_decode
 from apply_prefill import apply as apply_prefill
 from configure_runtime import apply as configure_runtime
 from apply_calibration import apply as apply_calibration
+from apply_workload import apply as apply_workload
+from apply_graph import apply as apply_graph
 
 
 def main():
@@ -48,6 +50,8 @@ def main():
     apply_decode(args.source, root)
     apply_prefill(args.source, root)
     apply_calibration(args.source)
+    apply_workload(args.source, root)
+    apply_graph(args.source, root)
     configure_runtime(args.source, root, lock)
     print('Applied Merlin packed decode, tiled prefill and runtime logging.', flush=True)
 

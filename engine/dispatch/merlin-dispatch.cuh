@@ -2,8 +2,11 @@
 
 #include "common.cuh"
 #include "merlin-build.h"
+#include "merlin-workload.h"
 #include "merlin-dispatch-profile.h"
+#include "merlin-dispatch-kernels.h"
 #include "merlin-kernel-log.cuh"
+#include "merlin-prefill-workspace.cuh"
 
 #include <array>
 #include <cstring>
@@ -41,6 +44,15 @@ struct merlin_dispatch_candidate {
 namespace merlin_dispatch {
 constexpr size_t max_output_bytes = size_t(256) * 1024 * 1024;
 
+struct capture_observer {
+    bool (*record)(void *, const key &, const char *) = nullptr;
+    void * user = nullptr;
+};
+inline capture_observer & capture_observer_current() {
+    static thread_local capture_observer current;
+    return current;
+}
+
 struct device_state {
     struct drift_history {
         key shape;
@@ -62,6 +74,7 @@ struct device_state {
     cudaEvent_t start = nullptr, stop = nullptr;
     std::vector<drift_history> histories;
     std::array<drift_slot, 8> drift{};
+    uint64_t epoch = 0;
 
     explicit device_state(int device) {
         const char * configured = std::getenv("MERLIN_ENGINE_PROFILE");
@@ -132,6 +145,7 @@ struct device_state {
             }
             slot.pending = false;
         }
+        if (invalidated) { ++epoch; }
         if (invalidated && !costs.save(path, fingerprint)) {
             std::fputs("merlin-engine: drift invalidation is in memory only; profile write failed\n", stderr);
         }
@@ -197,11 +211,13 @@ inline void calibration_receipt(const key & shape, size_t records, bool referenc
     }();
     if (!file) { return; }
     std::fprintf(file,
-        "{\"schema\":1,\"engine_revision\":\"%s\",\"runtime_revision\":\"%s\","
+        "{\"schema\":2,\"engine_revision\":\"%s\",\"runtime_revision\":\"%s\","
         "\"cutlass_revision\":\"%s\",\"m\":%lld,\"n\":%lld,\"k\":%lld,"
+        "\"sequence_batch\":%lld,\"tokens_in_flight\":%lld,\"phase\":%lld,"
         "\"records\":%zu,\"reference_valid\":%s,\"profile_saved\":true}\n",
         MERLIN_ENGINE_BUILD_ID, MERLIN_PRISM_REVISION, MERLIN_CUTLASS_REVISION,
-        (long long)shape.m, (long long)shape.n, (long long)shape.k, records,
+        (long long)shape.m, (long long)shape.n, (long long)shape.k,
+        (long long)shape.batch, (long long)shape.tokens_in_flight, (long long)shape.phase, records,
         reference_valid ? "true" : "false");
     if (std::fflush(file) || std::ferror(file)) {
         GGML_ABORT("merlin-engine: cannot write calibration receipt");
@@ -210,8 +226,8 @@ inline void calibration_receipt(const key & shape, size_t records, bool referenc
 
 inline const merlin_dispatch_candidate * select(const profile & costs, const key & shape,
         const merlin_dispatch_candidate * candidates, size_t count) {
-    GGML_ASSERT(count <= 3);
-    const char * names[3]{};
+    GGML_ASSERT(count <= 5);
+    const char * names[5]{};
     for (size_t i = 0; i < count; ++i) {
         names[i] = candidates[i].id;
     }
@@ -220,10 +236,27 @@ inline const merlin_dispatch_candidate * select(const profile & costs, const key
 }
 } // namespace merlin_dispatch
 
+// Sum logical operand footprints; this does not measure cache reuse or DRAM transactions.
+inline merlin_logical_bytes merlin_dispatch_logical_bytes(const ggml_tensor * weights,
+        const ggml_tensor * input, const ggml_tensor * output,
+        const ggml_cuda_mm_fusion_args_host * fusion = nullptr) {
+    size_t read = 0;
+    const ggml_tensor * operands[] = {weights, input, fusion ? fusion->gate : nullptr,
+        fusion ? fusion->x_bias : nullptr, fusion ? fusion->gate_bias : nullptr,
+        fusion ? fusion->x_scale : nullptr, fusion ? fusion->gate_scale : nullptr};
+    for (const auto * operand : operands) {
+        if (!operand) { continue; }
+        const size_t bytes = ggml_nbytes(operand);
+        if (bytes >= SIZE_MAX - read) { return {SIZE_MAX, ggml_nbytes(output)}; }
+        read += bytes;
+    }
+    return {read, ggml_nbytes(output)};
+}
+
 // Callbacks write the same real output. Only explicit startup calibration repeats them.
 inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_dispatch::key & shape,
         float * output, size_t elements, void (*reference)(void *), void * reference_user,
-        const merlin_dispatch_candidate * candidates, size_t candidate_count) {
+        const merlin_dispatch_candidate * candidates, size_t candidate_count, merlin_logical_bytes logical) {
     cudaStreamCaptureStatus capture;
     CUDA_CHECK(cudaStreamIsCapturing(ctx.stream(), &capture));
     auto & storage = merlin_dispatch::state(ctx.device);
@@ -263,6 +296,11 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
         merlin_dispatch::calibration_receipt(shape, rows.size(), reference_finite && reference_ms > 0);
     }
     const auto * selected = merlin_dispatch::select(storage.costs, shape, candidates, candidate_count);
+    const auto observer = merlin_dispatch::capture_observer_current();
+    if (selected && capture != cudaStreamCaptureStatusNone && observer.record &&
+            !observer.record(observer.user, shape, selected->id)) {
+        selected = nullptr; // A graph never embeds a custom selection the bounded monitor cannot track.
+    }
     merlin_dispatch::device_state::drift_slot * sample = nullptr;
     if (selected && !merlin_dispatch_calibrating() && capture == cudaStreamCaptureStatusNone) {
         sample = storage.sample(shape, selected->id);
@@ -273,7 +311,10 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
         CUDA_CHECK(cudaEventRecord(sample->stop, ctx.stream()));
         sample->pending = true;
     }
-    merlin_kernel_log(shape.phase == 0 ? "decode" : "prefill", selected ? selected->id : "prism", ctx.device,
+    merlin_kernel_log(merlin_workload_phase_name(shape.phase), selected ? selected->id : "prism", ctx.device,
         shape.m, shape.n, shape.k, selected ? selected->workspace_bytes : SIZE_MAX, shape.fusion != 0,
-        selected ? selected->shared_bytes_per_block : 0);
+        selected ? selected->shared_bytes_per_block : SIZE_MAX, logical, merlin_prefill_reserved_bytes(ctx),
+        shape.batch, shape.tokens_in_flight,
+        ggml_merlin_workload_get().source == GGML_MERLIN_SOURCE_UBATCH ? "llama_ubatch_and_graph_type" :
+        ggml_merlin_workload_get().source == GGML_MERLIN_SOURCE_CALIBRATION ? "explicit_calibration_workload" : "unknown");
 }

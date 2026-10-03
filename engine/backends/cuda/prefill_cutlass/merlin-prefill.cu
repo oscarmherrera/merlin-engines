@@ -5,6 +5,7 @@
 #include "mmq.cuh"
 #include "quantize.cuh"
 #include <cstdint>
+#include "merlin-prefill-workspace-impl.cuh"
 
 #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
 #include "merlin-prefill-tile.cuh"
@@ -44,16 +45,17 @@ size_t merlin_prefill_workspace_bytes(const ggml_tensor * input) {
     return size_t(n)*row;
 }
 
-size_t merlin_prefill_shared_bytes(bool wide) {
+size_t merlin_prefill_shared_bytes(bool wide, bool single) {
 #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
+    if (single) { return wide ? merlin_prefill::shared_bytes_wide_single : merlin_prefill::shared_bytes_single; }
     return wide ? merlin_prefill::shared_bytes_wide : merlin_prefill::shared_bytes;
 #else
-    GGML_UNUSED(wide);
+    GGML_UNUSED(wide); GGML_UNUSED(single);
     return 0;
 #endif
 }
 
-bool merlin_prefill_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
+bool merlin_prefill_eligible(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
                               const ggml_tensor * input, ggml_tensor * output) {
 #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
     const int cc = ggml_cuda_info().devices[ctx.device].cc;
@@ -92,19 +94,24 @@ bool merlin_prefill_supported(ggml_backend_cuda_context & ctx, const ggml_tensor
 #endif
 }
 
+bool merlin_prefill_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
+                              const ggml_tensor * input, ggml_tensor * output) {
+    return merlin_prefill_eligible(ctx, weights, input, output) && merlin_prefill_scratch(ctx);
+}
+
 #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
-template<int Tile>
+template<int Tile, int Stages>
 static void merlin_prefill_launch_tile(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
                                        const ggml_tensor * input, ggml_tensor * output) {
     const int64_t m = weights->ne[1], n = input->ne[1], k = weights->ne[0];
-    ggml_cuda_pool_alloc<char> quantized(ctx.pool());
-    char * q8 = quantized.alloc(merlin_prefill_workspace_bytes(input));
+    char * q8 = merlin_prefill_scratch(ctx);
+    GGML_ASSERT(q8 && merlin_prefill_workspace_bytes(input) <= merlin_prefill_slab_bytes);
     quantize_mmq_q8_1_cuda(static_cast<const float *>(input->data), nullptr, q8, GGML_TYPE_PQ2_0,
                           k, input->nb[1]/sizeof(float), input->nb[2]/sizeof(float), input->nb[3]/sizeof(float),
                           GGML_PAD(k, MATRIX_ROW_PADDING), n, 1, 1, ctx.stream());
     CUDA_CHECK(cudaGetLastError());
     const dim3 grid((m + Tile - 1)/Tile, (n + Tile - 1)/Tile);
-    merlin_prefill::pq2_cutlass<Tile><<<grid, 128, 0, ctx.stream()>>>(
+    merlin_prefill::pq2_cutlass<Tile, Stages><<<grid, 128, 0, ctx.stream()>>>(
         static_cast<const block_pq2_0 *>(weights->data), reinterpret_cast<const block_q8_1_mmq *>(q8),
         static_cast<float *>(output->data), m, n, k);
     CUDA_CHECK(cudaGetLastError());
@@ -114,7 +121,7 @@ static void merlin_prefill_launch_tile(ggml_backend_cuda_context & ctx, const gg
 void merlin_prefill_launch(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
                                   const ggml_tensor * input, ggml_tensor * output) {
 #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
-    merlin_prefill_launch_tile<32>(ctx, weights, input, output);
+    merlin_prefill_launch_tile<32, 2>(ctx, weights, input, output);
 #else
     GGML_UNUSED(ctx); GGML_UNUSED(weights); GGML_UNUSED(input); GGML_UNUSED(output);
     GGML_ABORT("CUTLASS prefill requires NVIDIA SM75");
@@ -124,7 +131,27 @@ void merlin_prefill_launch(ggml_backend_cuda_context & ctx, const ggml_tensor * 
 void merlin_prefill_launch_wide(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
                                        const ggml_tensor * input, ggml_tensor * output) {
 #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
-    merlin_prefill_launch_tile<64>(ctx, weights, input, output);
+    merlin_prefill_launch_tile<64, 2>(ctx, weights, input, output);
+#else
+    GGML_UNUSED(ctx); GGML_UNUSED(weights); GGML_UNUSED(input); GGML_UNUSED(output);
+    GGML_ABORT("CUTLASS prefill requires NVIDIA SM75");
+#endif
+}
+
+void merlin_prefill_launch_single(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
+                                  const ggml_tensor * input, ggml_tensor * output) {
+#if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
+    merlin_prefill_launch_tile<32, 1>(ctx, weights, input, output);
+#else
+    GGML_UNUSED(ctx); GGML_UNUSED(weights); GGML_UNUSED(input); GGML_UNUSED(output);
+    GGML_ABORT("CUTLASS prefill requires NVIDIA SM75");
+#endif
+}
+
+void merlin_prefill_launch_wide_single(ggml_backend_cuda_context & ctx, const ggml_tensor * weights,
+                                  const ggml_tensor * input, ggml_tensor * output) {
+#if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
+    merlin_prefill_launch_tile<64, 1>(ctx, weights, input, output);
 #else
     GGML_UNUSED(ctx); GGML_UNUSED(weights); GGML_UNUSED(input); GGML_UNUSED(output);
     GGML_ABORT("CUTLASS prefill requires NVIDIA SM75");

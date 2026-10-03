@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from calibration_shapes import backend_shapes, pq2_shapes
+from calibration_shapes import backend_shapes, pq2_shapes, requested_workload
 
 
 def verify_receipts(receipt, manifest, requested):
@@ -17,12 +17,13 @@ def verify_receipts(receipt, manifest, requested):
     observed = set()
     for line in receipt.read_text().splitlines():
         record = json.loads(line)
-        if (record.get('schema') != 1 or record.get('profile_saved') is not True or
+        if (record.get('schema') != 2 or record.get('profile_saved') is not True or
                 record.get('reference_valid') is not True or record.get('records', 0) < 1 or
                 any(record.get(field) != manifest[field] for field in
                     ('engine_revision', 'runtime_revision', 'cutlass_revision'))):
             raise ValueError('Calibration receipt does not establish a valid current profile')
-        shape = (record['m'], record['n'], record['k'])
+        shape = (record['m'], record['n'], record['k'], record['sequence_batch'],
+                 record['tokens_in_flight'], record['phase'])
         if shape not in requested:
             raise ValueError('Unexpected calibration shape')
         observed.add(shape)
@@ -75,8 +76,7 @@ def main():
     summary = {'graphs_requested': len(shapes), 'exit_code': result.returncode,
                'elapsed_seconds': time.monotonic() - started,
                'profile_present': profile.is_file() and profile.stat().st_size > 0}
-    requested = {(int(parts[2]), int(parts[3]), int(parts[9])) for parts in
-                 (line.split() for line in shapes)}
+    requested = {requested_workload(line) for line in shapes}
     try:
         manifest = json.loads((args.runtime / 'manifest.json').read_text())
         observed = verify_receipts(receipt, manifest, requested)

@@ -21,11 +21,6 @@ struct tile_config {
         float da[Tile];
         float db[2][Tile];
     };
-    union shared {
-        stage stages[2];
-        int32_t coordinates[Tile*Tile];
-        float output[Tile*(Tile+1)];
-    };
     struct prefetched {
         uint8_t packed[Tile*k/(4*threads)];
         int8_t q8[Tile*k/threads];
@@ -34,8 +29,18 @@ struct tile_config {
     };
 };
 
-constexpr size_t shared_bytes = sizeof(tile_config<32>::shared);
-constexpr size_t shared_bytes_wide = sizeof(tile_config<64>::shared);
+template<int Tile, int Stages>
+union tile_storage {
+    static_assert(Stages == 1 || Stages == 2, "unsupported pipeline depth");
+    typename tile_config<Tile>::stage stages[Stages];
+    int32_t coordinates[Tile*Tile];
+    float output[Tile*(Tile+1)];
+};
+constexpr size_t shared_bytes = sizeof(tile_storage<32, 2>);
+constexpr size_t shared_bytes_wide = sizeof(tile_storage<64, 2>);
+constexpr size_t shared_bytes_single = sizeof(tile_storage<32, 1>);
+constexpr size_t shared_bytes_wide_single = sizeof(tile_storage<64, 1>);
+static_assert(shared_bytes_single == 4480 && shared_bytes_wide_single == 16640, "single-stage workspace changed");
 static_assert(shared_bytes == 8960 && shared_bytes_wide == 17920, "shared workspace changed");
 
 template<int Tile>
@@ -98,18 +103,18 @@ static __device__ __forceinline__ void stage_tile(typename tile_config<Tile>::st
     }
 }
 
-template<int Tile>
+template<int Tile, int Stages>
 static __global__ void pq2_cutlass(const block_pq2_0 * weights, const block_q8_1_mmq * input,
                                   float * output, int64_t m, int64_t n, int64_t k) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
     using Config = tile_config<Tile>;
     using Mma = typename Config::Mma;
-    __shared__ typename Config::shared shared;
+    __shared__ tile_storage<Tile, Stages> shared;
     const int tid = threadIdx.x, lane = tid%32, warp = tid/32;
     const int warp_m = (warp/2)*(Tile/2), warp_n = (warp%2)*(Tile/2);
     const int64_t row0 = int64_t(blockIdx.x)*Tile, col0 = int64_t(blockIdx.y)*Tile;
 
-    // CUTLASS owns fragment coordinates; reuse this shared storage for the two input stages.
+    // CUTLASS owns fragment coordinates; reuse this shared storage for input staging.
     for (int i = tid; i < Tile*Tile; i += 128) { shared.coordinates[i] = i; }
     __syncthreads();
     typename Mma::FragmentC coordinates;
@@ -126,9 +131,9 @@ static __global__ void pq2_cutlass(const block_pq2_0 * weights, const block_q8_1
     stage_tile<Tile>(shared.stages[0], prefetch<Tile>(weights, input, row0, col0, m, n, k, 0));
     __syncthreads();
     for (int64_t inner0 = 0; inner0 < k; inner0 += 64) {
-        const int current = (inner0/64)%2;
+        const int current = (inner0/64)%Stages;
         typename Config::prefetched next;
-        if (inner0 + 64 < k) {
+        if (Stages == 2 && inner0 + 64 < k) {
             next = prefetch<Tile>(weights, input, row0, col0, m, n, k, inner0 + 64);
         }
         auto & tile = shared.stages[current];
@@ -157,7 +162,15 @@ static __global__ void pq2_cutlass(const block_pq2_0 * weights, const block_q8_1
                 sum[i] += float(accum[i])*tile.da[row]*tile.db[group][col];
             }
         }
-        if (inner0 + 64 < k) { stage_tile<Tile>(shared.stages[1-current], next); }
+        if (Stages == 1) {
+            // All warps must finish reading the only stage before any thread overwrites it.
+            __syncthreads();
+            if (inner0 + 64 < k) {
+                stage_tile<Tile>(shared.stages[0], prefetch<Tile>(weights, input, row0, col0, m, n, k, inner0 + 64));
+            }
+        } else if (inner0 + 64 < k) {
+            stage_tile<Tile>(shared.stages[1-current], next);
+        }
         __syncthreads();
     }
 #pragma unroll

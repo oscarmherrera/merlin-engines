@@ -85,10 +85,28 @@ def backend_shapes(matrices, ubatch):
         for n in tokens:
             if m * n * 4 > MAX_OUTPUT_BYTES:
                 continue  # runtime keeps the reference for these uncalibrated shapes
-            yield (f'{MUL_MAT_OP} 0 {m} {n} 1 1 0 2 '
-                   f'{PQ2_TYPE} {k} {m} 1 1 34 {row_bytes} {row_bytes*m} {row_bytes*m} '
-                   f'0 {k} {n} 1 1 4 {k*4} {k*n*4} {k*n*4} '
-                   f'pq2_m{m}_n{n}_k{k}')
+            for sequences, total_tokens, phase in representative_workloads(n):
+                yield (f'{MUL_MAT_OP} 0 {m} {n} 1 1 0 2 '
+                       f'{PQ2_TYPE} {k} {m} 1 1 34 {row_bytes} {row_bytes*m} {row_bytes*m} '
+                       f'0 {k} {n} 1 1 4 {k*4} {k*n*4} {k*n*4} '
+                       f'pq2_m{m}_n{n}_k{k} {sequences} {total_tokens} {phase}')
+
+
+def representative_workloads(tokens):
+    # Deliberately specified workloads; the backend parser never infers these from tensor shape.
+    if tokens in (1, 2, 4, 8):
+        yield tokens, tokens, 0  # one token for every independent decode sequence
+    for sequences in (1, 2, 4, 8):
+        if tokens >= 2 * sequences and tokens % sequences == 0:
+            yield sequences, tokens, 1  # equal multi-token prompts
+    if tokens >= 3:
+        yield 2, tokens, 2  # one sequence has one token; the other has the remaining tokens
+
+
+def requested_workload(line):
+    parts = line.split()
+    return (int(parts[2]), int(parts[3]), int(parts[9]),
+            int(parts[-3]), int(parts[-2]), int(parts[-1]))
 
 
 def main():

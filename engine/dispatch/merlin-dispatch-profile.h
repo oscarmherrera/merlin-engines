@@ -26,7 +26,7 @@ struct key {
     bool valid() const {
         return architecture > 0 && operation >= 0 && m > 0 && n > 0 && k > 0 &&
             batch > 0 && tokens_in_flight > 0 && weight_format >= 0 &&
-            (phase == 0 || phase == 1) && fusion >= 0;
+            phase >= 0 && phase <= 3 && fusion >= 0;
     }
 };
 
@@ -117,7 +117,7 @@ public:
         entries.clear();
         std::ifstream in(path);
         std::string magic, identity;
-        if (!std::getline(in, magic) || magic != "MERLIN_RESIDENT_PROFILE_V1" ||
+        if (!std::getline(in, magic) || magic != "MERLIN_RESIDENT_PROFILE_V2" ||
                 !(in >> std::quoted(identity)) || identity != fingerprint) {
             return false;
         }
@@ -164,7 +164,7 @@ public:
         FILE * file = fdopen(fd, "w");
         if (!file) { close(fd); std::remove(filename.data()); return false; }
         std::ostringstream data;
-        data << "MERLIN_RESIDENT_PROFILE_V1\n" << std::quoted(fingerprint) << '\n' << std::setprecision(17);
+        data << "MERLIN_RESIDENT_PROFILE_V2\n" << std::quoted(fingerprint) << '\n' << std::setprecision(17);
         for (const auto & row : entries) {
             const key & s = row.first;
             for (const auto & item : row.second) {

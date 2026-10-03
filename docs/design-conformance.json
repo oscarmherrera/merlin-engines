@@ -1,7 +1,7 @@
 {
   "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
   "design_version": "0.1, 2026-10-03",
-  "review_state": "Reviewed against original design and compiled source5c373dd. OverallPARTIAL: outstanding gaps and GPU acceptance below.",
+  "review_state": "RTX8000 implementation gaps closed in source and host-tested; integrated CUDA build and hardware acceptance pending. No performance claim.",
   "requirements": [
     {
       "requirement": "Bonsai core and endpoint integration",
@@ -24,13 +24,13 @@
     {
       "requirement": "CUTLASS/CUDA fused ternary-to-tile prefill",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp, double-buffered32x32/64x64 candidate tiles; CUDA compilation passed; GPU results pending.",
+      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp. Four candidates compare32x32/64x64 tiles and1/2 shared stages; current compilation and GPU validation pending.",
       "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; runtime.lock.json"
     },
     {
       "requirement": "Independent tile/pipeline/prompt tuning",
-      "status": "PARTIAL",
-      "finding": "Two Turing tile candidates implemented; pipeline depth fixed2. Transform fusion remains upstream rather than fused into CUTLASS, and neither prompt-length nor fusion tuning has hardware evidence. Ampere later by owner sequence.",
+      "status": "READY_FOR_HARDWARE_TUNING",
+      "finding": "Four Turing tile/pipeline combinations registered; startup samples representative prompt widths. Hadamard transforms remain preserved upstream; transform-fusion comparison and hardware tuning remain experiments, with no claimed gain. Ampere follows owner sequence.",
       "evidence": "engine/dispatch/merlin-dispatch-prefill.cuh"
     },
     {
@@ -42,19 +42,19 @@
     {
       "requirement": "Tensor Core decode competitor",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Both CUTLASS candidates registered alongside native decode where compatible; fusion-specific unsupported cases retain reference.",
+      "finding": "Four CUTLASS candidates compete with native decode when compatible; unsupported fusion contracts retain reference.",
       "evidence": "engine/backends/cuda/decode_ternary/merlin-decode.cuh"
     },
     {
       "requirement": "Kernel registry by device/format/shape/phase",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Compatible candidates assembled at production dispatch, keyed by architecture/type/shape/fusion. Phase currently inferred from operator width; see full-key gap.",
+      "finding": "Compatible candidates use architecture, format, matrix shape, actual microbatch workload classification and fusion signature.",
       "evidence": "engine/dispatch/merlin-dispatch-prefill.cuh; engine/backends/cuda/decode_ternary/merlin-decode.cuh"
     },
     {
       "requirement": "Full cost-dispatch key",
-      "status": "PARTIAL",
-      "finding": "Architecture/op/M/N/K/format/fusion included. Phase inferred from route width; batch and tokens_in_flight both derive from N. Independent scheduler phase/workload signals are not exposed.",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Actual n_seqs_unq and n_tokens propagated from llama process_ubatch through central ggml-base thread-local storage; phase is token multiplicity or encoder graph type, not endpoint request intent. Matrix N remains independent. Unknown metadata uses reference. ProfileV2 and receipt schema2 verify distinct workload identities.",
       "evidence": "engine/dispatch/merlin-dispatch-profile.h; engine/dispatch/merlin-dispatch-prefill.cuh"
     },
     {
@@ -77,20 +77,20 @@
     },
     {
       "requirement": "Invalidate/retest on observed cost drift",
-      "status": "PARTIAL",
-      "finding": "Asynchronous uncaptured per-shape samples can invalidate a slower candidate. Captured graph replays are neither observed nor invalidated; retest occurs at next startup.",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "Uncaptured per-kernel and captured whole-graph completion samples invalidate persisted profiles. Device epoch and workload identity force cached graph recapture. Graph-cohort drift does not establish an individual kernel cause. Explicit startup calibration retests. Host controls pass; GPU replay proof pending.",
       "evidence": "engine/dispatch/merlin-dispatch.cuh"
     },
     {
       "requirement": "Bounded scratch and preallocated workspace",
-      "status": "PARTIAL",
-      "finding": "Q8 cap128MiB; calibration host buffers256MiB/output. Startup calibration is a separate process and cannot preallocate the endpoint CUDA context. Endpoint pool reused on demand; explicit preallocation still missing.",
+      "status": "IMPLEMENTED_IN_SOURCE",
+      "finding": "SM75 backend initialization reserves128MiB for stream0 only when calibration or a measured faster CUTLASS route warrants it. Additional eligible mapped streams reserve before capture, at most8slabs/1GiB percontext. Stable addresses survive graphs; synchronized backend teardown frees them. Candidate launches allocate nothing. GPU load-memory proof pending.",
       "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill.cu; engine/dispatch/merlin-dispatch.cuh"
     },
     {
       "requirement": "Profiler latency/bytes/workspace/selection/end-to-end",
-      "status": "PARTIAL",
-      "finding": "Operation/calibration timings, route/global-scratch/shared-per-block logs and endpoint TTFT harness exist. Actual bytes moved and captured replay completion attribution remain incomplete.",
+      "status": "IMPLEMENTED_WITH_MEASUREMENT_LIMITS",
+      "finding": "Operator/calibration timing, sampled actual graph completion, route and actual workload, used/reserved scratch, shared-per-block storage and endpoint timing are instrumented. Logical operand byte footprints are explicitly estimates; physical DRAM transactions are not measured. Hardware observations pending.",
       "evidence": "engine/telemetry/merlin-profile.cuh; engine/telemetry/merlin-kernel-log.cuh; benchmarks/single_request.py"
     },
     {
@@ -124,7 +124,7 @@
       "evidence": "README.md"
     }
   ],
-  "validation": {
+  "previous_build": {
     "engine_revision": "5c373dd5ab9e41df35ffe6b9fe6759b94c4085a8",
     "cuda_build": "PASS",
     "cuda_build_seconds": 79.538,
@@ -137,5 +137,14 @@
     "gpu_correctness": "NOT RUN",
     "gpu_performance": "NOT RUN",
     "deployed": false
+  },
+  "validation": {
+    "cuda_build": "PENDING",
+    "local_script_tests_passed": 13,
+    "workload_transport": "PASS: pinned headers, cross-DSO and threads",
+    "gpu_correctness": "NOT RUN",
+    "gpu_performance": "NOT RUN",
+    "deployed": false,
+    "first_check_after_model_load": "Record device/process VRAM before first inference; record available loader/KV and reserved-scratch evidence separately."
   }
 }
