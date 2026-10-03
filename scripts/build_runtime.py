@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and stage the RTX8000 diagnostic runtime; never load or install it."""
+"""Build and stage the RTX8000 custom runtime; never load or install it."""
 import argparse
 import hashlib
 import json
@@ -8,10 +8,16 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
+import shlex
 
 
 def run(*args, **kwargs):
+    started = time.monotonic()
+    print(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+          'START', shlex.join(str(a) for a in args), flush=True)
     subprocess.run([str(a) for a in args], check=True, **kwargs)
+    print('DONE', str(args[0]), 'elapsed_seconds=%.3f' % (time.monotonic() - started), flush=True)
 
 
 def main():
@@ -23,9 +29,13 @@ def main():
     parser.add_argument('--jobs', type=int, default=6)
     parser.add_argument('--source-cache', type=Path, help='Existing local Git checkout of the pinned runtime')
     parser.add_argument('--scratch', type=Path, help='New directory for temporary source and objects')
+    parser.add_argument('--reuse-scratch', action='store_true',
+                        help='Reuse objects for the SAME pinned upstream source; source must be restored clean first')
     args = parser.parse_args()
     if not 1 <= args.jobs <= 32:
         parser.error('jobs must be 1..32')
+    if args.reuse_scratch and not args.scratch:
+        parser.error('--reuse-scratch requires --scratch')
     root = Path(__file__).resolve().parents[1]
     if subprocess.check_output(['git', '-C', str(root), 'status', '--porcelain']):
         parser.error('Build from a clean, committed engine repository')
@@ -39,11 +49,18 @@ def main():
     if 'release 12.' not in compiler:
         parser.error('The resident CUDA build requires CUDA 12.x (later P40 support)')
     scratch = args.scratch.resolve() if args.scratch else output
-    if args.scratch:
+    if args.scratch and not args.reuse_scratch:
         scratch.mkdir(parents=True, exist_ok=False)
     source, build, bundle = scratch / 'source', scratch / 'build', output / 'runtime'
     repository = str(args.source_cache.resolve()) if args.source_cache else lock['runtime_repository']
-    run('git', 'clone', '--depth', '1', '--branch', lock['runtime_tag'], repository, source)
+    if args.reuse_scratch:
+        cache = (build / 'CMakeCache.txt').read_text()
+        expected = 'CMAKE_HOME_DIRECTORY:INTERNAL=' + str(source)
+        if expected not in cache.splitlines():
+            parser.error('Existing objects do not belong to this source directory')
+        print('Reusing object directory for the unchanged pinned upstream revision.', flush=True)
+    else:
+        run('git', 'clone', '--depth', '1', '--branch', lock['runtime_tag'], repository, source)
     run(sys.executable, root / 'scripts/apply_runtime.py', source)
     environment = dict(os.environ, CUDACXX=str(nvcc), CUDAHOSTCXX=args.host_cxx)
     environment['PATH'] = str(cuda / 'bin') + os.pathsep + environment.get('PATH', '')
@@ -76,6 +93,8 @@ def main():
     shutil.copyfile(source / 'LICENSE', bundle / 'LICENSE.llama.cpp')
     manifest = {'engine_revision': engine_revision, 'runtime_revision': lock['runtime_revision'],
                 'endpoint_binding': lock['endpoint_binding'], 'cuda_architectures': ['75'],
+                'reused_objects_same_upstream': args.reuse_scratch,
+                'build_jobs': args.jobs,
                 'nvcc': compiler.strip(), 'host_cxx': subprocess.check_output(
                     [args.host_cxx, '--version'], text=True).splitlines()[0],
                 'gpu_validation': 'NOT RUN', 'files': {}}

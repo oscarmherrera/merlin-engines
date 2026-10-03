@@ -1,7 +1,7 @@
-# RTX 8000 diagnostic runtime
+# RTX 8000 custom runtime and diagnostics
 
-This is design step 2: operation instrumentation on the pinned Prism core.
-Custom kernels, calibrated dispatch, and any performance gain remain unproven.
+Custom packed decode and tiled prefill share the pinned Prism core.
+GPU correctness, calibrated dispatch, and any performance gain remain unproven.
 The first build targets only `sm_75`. The endpoint's existing `--lib` loader is
 the integration path; its `prism-adfffbe` binding is unchanged.
 
@@ -11,7 +11,7 @@ Build directly on go-dev `.30`, from a clean pulled engine commit:
 python3 scripts/build_runtime.py --cuda /home/oscar/.local/merlin-toolchains/cuda-12.8.1 --output /home/oscar/merlin-engine-builds/UNIQUE_BUILD --jobs 6
 ```
 
-The command checks the pinned source revision, adds the profiling overlay, and
+The command checks the pinned source revision, adds both kernel overlays and profiling, and
 builds the shared libraries, `llama-bench`, and `test-backend-ops` for `sm_75`.
 The server, web UI, and examples are disabled. The standard attention variants
 include Q8/Q8; `GGML_CUDA_FA_ALL_QUANTS=OFF` excludes the extra combinations.
@@ -68,8 +68,32 @@ overlap, and launch gaps can fall inside event intervals. Do not use this profil
 as a kernel calibration table or quote it as end-to-end throughput. Run ordinary
 inference with profiling unset for performance comparisons.
 
-Remaining evidence: exercise the producer on RTX8000, check outputs against the
-reference, distinguish attention/transforms/projections at long context, measure
-workspace and memory traffic, then choose a custom kernel target. The current
-instrument does not measure bytes moved or workspace and does not identify the
-internal kernel selected within a fused operation.
+## Kernel selection and build progress
+
+Set `MERLIN_KERNEL_LOG` to a new absolute JSONL path before starting the endpoint.
+The runtime records each phase/batch's first 256 host dispatches, then every 1024;
+without the variable, its first 16 dispatches per phase/batch go to stderr.
+Records contain timestamp, phase, selected kernel, device, M/N/K, fusion state and
+workspace bytes. Decode uses zero scratch; prefill reports shared bytes per CUDA
+block and allocates zero global scratch. No prompt, activation or weight values
+are logged. An unwritable requested log fails explicitly.
+
+These records prove host dispatch selection, not completed GPU execution. CUDA
+graph replays do not repeat host dispatch; `counts_graph_replays: false` makes this
+explicit. `MERLIN_CUDA_PROFILE` additionally provides bounded operation completion
+timings and disables CUDA graphs for that diagnostic run. Leave profiling unset
+for performance measurements. The endpoint's existing request/prefill/decode logs
+supply ongoing request progress while graphs replay.
+
+The builder prints timestamped START/DONE records and elapsed time for each
+command; redirect stdout and stderr to a persistent build log. The final manifest
+records the engine/upstream revisions, compiler, jobs, object reuse and file hashes.
+`--reuse-scratch --scratch EXISTING` is restricted to the same pinned upstream
+revision and exact CMake source path, with the source restored clean before applying
+the new overlay. Preserve and verify the prior overlay before restoring it. It is
+not a way to reuse objects across different upstream versions.
+
+Remaining evidence: compile both kernels, exercise them on RTX8000, compare outputs
+and logits, then measure long-context speed and memory. The operation profiler does
+not measure memory traffic. The fixed N=16 prefill boundary is a supported-shape
+boundary, not a measured crossover.

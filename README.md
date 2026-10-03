@@ -18,7 +18,10 @@ Repository setup and the [first RTX 8000 baseline](docs/benchmarks/rtx8000-2026-
 are complete: 22,583 input tokens, 30.60 seconds to first token, 31.11 seconds
 total, and the correct retrieved value. The report preserves a checker false
 failure caused by an unspecified JSON key; the request generator now specifies it.
-**The hybrid resident engine is not implemented, compiled, or benchmarked yet.**
+**Custom decode and prefill source is implemented; CUDA compilation and GPU validation are pending.**
+Decode specializes batches 1/2/4/8; prefill uses shared-memory WMMA tiles on Turing.
+See [decode](docs/decode-kernel.md), [prefill](docs/prefill-kernel.md), and
+[runtime logging](docs/profiling.md). Calibrated dispatch is not implemented.
 No speedup is claimed.
 The owner has deferred SpecKit work until a viable implementation functions.
 The owner has also waived the change gate in this subtree repository during
@@ -51,14 +54,11 @@ must improve measured behavior beyond those implementations.
 
 ## Sequence
 
-1. Record a single RTX 8000 baseline through `merlin-endpoint`, using its current
-   model, Q8 KV, window, and slots. Validate the measurement before any sweep.
-2. Profile operation/layer costs at short and large contexts, including attention,
-   recurrent state, and transforms, not only weight multiplication.
-3. Implement packed ternary decode candidates for batches 1, 2, 4, and 8, and
-   bounded tile-based matrix prefill candidates. Validate against the reference
-   with the same inputs and documented numerical tolerance before timing wins
-   can select a candidate.
+1. The single RTX 8000 baseline is recorded. Do not repeat reference-only tests.
+2. Build custom packed decode and tiled prefill in parallel, integrate both in the
+   pinned runtime, and compile the runtime and existing endpoint on `.30`.
+3. After authorized deployment, verify actual custom-kernel selection and outputs,
+   then measure context sizes and profile attention, recurrent state and transforms.
 4. Add measured dispatch keyed by device/software identity, format, and operation
    shape. Persist profiles, invalidate incompatible profiles, retain the safe
    reference for unvalidated shapes, and prove every selected path is reached.

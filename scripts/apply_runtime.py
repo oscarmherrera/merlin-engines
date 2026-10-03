@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+from apply_decode import apply as apply_decode
+from apply_prefill import apply as apply_prefill
 
 
 def main():
@@ -38,7 +40,10 @@ def main():
         text = text.replace(before, after)
     path.write_text(text)
     shutil.copyfile(root / 'runtime/merlin-profile.cuh', path.parent / 'merlin-profile.cuh')
-    print('Applied graph profiler; ordinary inference dispatch is unchanged.')
+    shutil.copyfile(root / 'runtime/merlin-kernel-log.cuh', path.parent / 'merlin-kernel-log.cuh')
+    apply_decode(args.source, root)
+    apply_prefill(args.source, root)
+    print('Applied Merlin packed decode, tiled prefill and runtime logging.', flush=True)
 
 
 if __name__ == '__main__':
