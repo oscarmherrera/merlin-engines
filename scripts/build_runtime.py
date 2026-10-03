@@ -68,6 +68,18 @@ def main():
     environment['PATH'] = str(cuda / 'bin') + os.pathsep + environment.get('PATH', '')
     environment['LD_LIBRARY_PATH'] = os.pathsep.join(filter(None, (
         str(cuda / 'lib'), environment.get('LD_LIBRARY_PATH'))))
+    backend_objects = build / 'ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir'
+    flags_path = backend_objects / 'flags.make'
+    includes_path = backend_objects / 'includes_CUDA.rsp'
+    def flags_value(path):
+        return '\n'.join(line for line in path.read_text().splitlines()
+                         if line.strip() and not line.lstrip().startswith('#'))
+    cached_flags = None
+    if args.reuse_scratch and flags_path.exists() and includes_path.exists():
+        objects = list(backend_objects.rglob('*.o'))
+        if objects:
+            cached_flags = (flags_value(flags_path), includes_path.read_bytes(),
+                            min(item.stat().st_mtime_ns for item in objects) - 1000000000)
     run('cmake', '-S', source, '-B', build,
         '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=ON', '-DGGML_NATIVE=OFF',
         '-DGGML_CUDA=ON', '-DGGML_CUDA_FA_ALL_QUANTS=OFF', '-DCMAKE_CUDA_ARCHITECTURES=75',
@@ -78,6 +90,12 @@ def main():
         '-DCMAKE_INSTALL_RPATH=$ORIGIN', '-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON',
         '-DLLAMA_CURL=OFF', '-DLLAMA_BUILD_TESTS=ON', '-DLLAMA_BUILD_EXAMPLES=OFF',
         '-DLLAMA_BUILD_SERVER=OFF', '-DLLAMA_BUILD_UI=OFF', env=environment)
+    # CMake's source-option comments can touch the shared flags file without
+    # changing any global compiler argument. Overlay sources are freshly written;
+    # keep unrelated objects only when the flags AND include response are identical.
+    if cached_flags and (flags_value(flags_path), includes_path.read_bytes()) == cached_flags[:2]:
+        os.utime(flags_path, ns=(flags_path.stat().st_atime_ns, cached_flags[2]))
+        print('CUDA backend global flags/includes unchanged; preserved cached-object dependencies.', flush=True)
     run('cmake', '--build', build, '--parallel', args.jobs,
         '--target', 'llama', 'llama-bench', 'test-backend-ops', env=environment)
     shutil.copytree(build / 'bin', bundle, symlinks=True)
