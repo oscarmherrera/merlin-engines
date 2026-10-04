@@ -14,20 +14,31 @@ phase. The streaming proposal is retained in `docs/` as reference only.
 
 ## Status
 
-Repository setup and the [first RTX 8000 baseline](docs/benchmarks/rtx8000-2026-10-03/README.md)
-are complete: 22,583 input tokens, 30.60 seconds to first token, 31.11 seconds
-total, and the correct retrieved value. The report preserves a checker false
-failure caused by an unspecified JSON key; the request generator now specifies it.
-**CUTLASS prefill and measured dispatch compiled for RTX8000 (`5c373dd`, 79.538seconds on `.30`, six jobs). GPU validation has not run.**
-Decode specializes batches 1/2/4/8. Prefill uses CUTLASS integer Tensor Core tiles
-and the existing Bonsai PQ2/Q8 arithmetic. The old FP16 WMMA prototype was slower
-than Prism and has been removed; the endpoint was restored to the reference runtime.
-See [decode](docs/decode-kernel.md), [prefill](docs/prefill-kernel.md), and
-[runtime logging](docs/profiling.md), [measured dispatch](docs/measured-dispatch.md),
-and the [requirement checklist](docs/design-conformance.json). Startup calibration
-and persisted measured dispatch are compiled. Remaining design gaps
-are explicitly listed in the checklist; implementation is not performance proof.
-No speedup is claimed.
+The standalone repository is at `4bbfd0e`; the parent `merlin-engines` branch
+contains that tree locally at `b7958710d`. The standalone commit is pushed. The
+parent push is blocked by pre-existing main-repository change-gate failures; its
+gate has not been bypassed. The RTX8000 `sm_75` runtime built from `13288e4` on
+`.30` and is staged on the RTX8000, but is not installed in the endpoint.
+
+The existing 17-case direct CUDA backend runner passed 17/17 with numerical
+references and execution receipts. At the measured `M=17408, K=5120` decode
+shape, Q8 custom batches 1/2/4/8 were 2.59–5.91 times slower than Prism; the
+Q8 change improved the earlier custom F32 path by 15–19%. At the measured
+`M=5120, N=2048, K=17408` prefill shape, the best CUTLASS variant was 1.06
+times slower than Prism. These are kernel-shape measurements, not full-model
+speed or large-context results. See the [kernel diagnosis](docs/benchmarks/rtx8000-13288e4-kernel-diagnosis.md),
+[decode](docs/decode-kernel.md), [prefill](docs/prefill-kernel.md),
+[measured dispatch](docs/measured-dispatch.md), [runtime logging](docs/profiling.md),
+and [requirement checklist](docs/design-conformance.json). No custom speedup
+or viable engine has been demonstrated.
+
+The RTX8000 endpoint was restored to its original Bonsai/Prism binding
+`prism-adfffbe` on 2026-10-04. Its model is ready with a 262,144-token configured
+context. The 18,430 MiB device usage measured immediately after restoration
+is total occupied VRAM, not a separately measured weight allocation. From now
+until the owner changes the instruction, engine experiments use **direct
+runs of the staged runtime**, not the endpoint. A direct full-model custom run
+has not yet been completed. No 3090, P40 or R9700 custom run has begun.
 The owner has deferred SpecKit work until a viable implementation functions.
 The owner has also waived the change gate in this subtree repository during
 the experimental phase. Correctness tests and performance validation still
@@ -59,21 +70,21 @@ must improve measured behavior beyond those implementations.
 
 ## Sequence
 
-1. The single RTX 8000 baseline is recorded. Do not repeat reference-only tests.
-2. Build custom packed decode and tiled prefill in parallel, integrate both in the
-   pinned runtime, and compile the runtime and existing endpoint on `.30`.
-3. After authorized deployment, verify actual custom-kernel selection and outputs,
-   then measure context sizes and profile attention, recurrent state and transforms.
-4. Add measured dispatch keyed by device/software identity, format, and operation
-   shape. Persist profiles, invalidate incompatible profiles, retain the safe
-   reference for unvalidated shapes, and prove every selected path is reached.
-5. Verify logits/outputs, memory bounds, prefix reuse, continuous batching, and
-   long-context stability through the actual endpoint. Never materialize a
-   model-sized expanded weight copy.
-6. Repeat correctness and end-to-end comparisons on 3090, then P40. Port and tune
-   for R9700 last. Hardware-specific results do not transfer by assumption.
+1. Stock Bonsai baselines exist at 22,583, 61,666, 128,000 and 226,000 input
+   tokens; see the [initial baseline](docs/benchmarks/rtx8000-2026-10-03/README.md)
+   and [large-context results](docs/benchmarks/rtx8000-2026-10-03-stock-large-context/baseline-comparison.json).
+2. The Q8 packed decode, CUTLASS tiled prefill and measured dispatch are built;
+   direct graph cases pass, but the measured custom shapes lose to Prism.
+3. Use direct full-model RTX8000 runs against the staged runtime. Record VRAM
+   immediately after loading, before inference; then prove custom GPU execution,
+   compare outputs/logits and matched speed, and exercise large contexts.
+4. Profile the remaining bottlenecks from evidence, improve the custom kernels,
+   and repeat the direct measurements. Never materialize a model-sized expanded
+   weight copy.
+5. After a viable RTX8000 implementation is established, proceed to 3090, P40,
+   then R9700. Formalize in SpecKit only after viability, as instructed.
 
-## First baseline
+## Historical endpoint baseline
 
 Prepare a deterministic synthetic retrieval request locally:
 
@@ -81,21 +92,21 @@ Prepare a deterministic synthetic retrieval request locally:
 python3 benchmarks/single_request.py --output /tmp/merlin-resident-baseline
 ```
 
-This writes the request without contacting the fleet. Inspect it before use.
-After the owner's fresh GPU go-ahead, execute that exact prepared request:
+This wrote the historical reference request without contacting the fleet. The
+following command documents how that completed endpoint baseline was taken;
+it is not the current engine-test procedure:
 
 ```sh
 python3 benchmarks/single_request.py --output /tmp/merlin-resident-baseline --execute
 ```
 
-Execution checks robot's `running_runs.total`, endpoint idleness and the pinned
-model/binding before the one inference call. No service stop/start, deployment,
-context change, or model load is performed. The 300-second client bound cancels
-the request by closing its connection; server-side cancellation still needs
-verification from the post-request state. Failures preserve diagnostic results
-and return nonzero. Token counts come from the endpoint, never a character
-estimate. TTFT excludes SSE keepalive comments. Wall time is not decode speed.
+The recorded endpoint baselines are retained for later matched comparisons.
+Current custom-engine tests run directly from the staged runtime, with
+`running_runs.total` checked before any host load. Direct runs must record the
+runtime identity and full-model execution evidence; graph-only tests do not
+establish end-to-end or large-context performance.
 
 Build deployment artifacts on go-dev `.30` from clean pulled commits. Local
-tests may run on the Mac. GPU tests require a fresh explicit go-ahead and an idle
-fleet. Results under `results/` are ignored until reviewed for inclusion.
+tests may run on the Mac. GPU tests require an idle fleet and must obey the
+owner's current direct-run instruction. Results under `results/` are ignored
+until reviewed for inclusion.

@@ -89,7 +89,13 @@ operator operand footprints from actual tensor sizes (including fused operands),
 exclude internal scratch, and are explicitly not measured DRAM traffic. Reference
 workspace/shared usage is unknown (`null`), not a claimed zero.
 
-Status: integrated CUDA compilation passed at engine dd4940e in 84.522 seconds.
-The combined scripts suite passes 13 tests, including workspace lifecycle, logger
-JSON and graph monitoring. GPU numerical, endpoint, VRAM and performance validation
-remain pending. No SpecKit or AMD implementation is included.
+Status (2026-10-04): the `13288e4` runtime compiled on `.30` and passed the
+existing 17-case direct RTX8000 CUDA backend runner with numerical references.
+The vectorized staging change removed reported register spills from all four
+candidates. At `M=5120, N=2048, K=17408`, the best 64×64 single-stage candidate
+measured 8.0559 ms against Prism's 7.5834 ms (1.06 times slower); the narrow
+32×32 variants remained 1.82–2.19 times slower. See the [kernel diagnosis](benchmarks/rtx8000-13288e4-kernel-diagnosis.md).
+The staged runtime has not been loaded by the endpoint, which is back on stock
+Bonsai. Direct full-model execution, logits, custom load VRAM, large-context
+performance and stability remain pending. No SpecKit or AMD implementation is
+included.

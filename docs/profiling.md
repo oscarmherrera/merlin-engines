@@ -1,9 +1,14 @@
 # RTX 8000 custom runtime and diagnostics
 
-Custom packed decode and tiled prefill share the pinned Prism core.
-GPU correctness, calibrated dispatch, and any performance gain remain unproven.
-The first build targets only `sm_75`. The endpoint's existing `--lib` loader is
-the integration path; its `prism-adfffbe` binding is unchanged.
+Custom packed decode and tiled prefill share the pinned Prism core. The
+`13288e4` runtime compiled for `sm_75` and passed the existing 17 direct
+RTX8000 CUDA backend cases, but the reported custom decode and prefill shapes
+were slower than Prism. Full-model correctness, custom load VRAM,
+large-context behavior and a performance gain remain unproven. The endpoint
+has been restored to stock Bonsai (`prism-adfffbe`). Until the owner changes
+the instruction, all further engine tests are direct runs of a staged runtime;
+the endpoint procedures below describe historical baseline capture or future
+integration only.
 
 Build directly on go-dev `.30`, from a clean pulled engine commit:
 
@@ -43,17 +48,17 @@ before that correction and passed afterward. This does not establish GPU correct
 
 ## Capture and report
 
-The first check after an authorized model load is VRAM usage, before any inference.
+The first check after a direct custom-model load is VRAM usage, before any inference.
 Save `nvidia-smi --query-gpu=index,name,memory.total,memory.used,memory.free --format=csv`
 and `nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory --format=csv`.
-Identify the endpoint with `systemctl show merlin-endpoint -p MainPID --value`.
+Identify the direct process and mapped runtime libraries. Endpoint PID checks
+apply only if endpoint testing is later authorized again.
 Record available loader weight-buffer and KV-buffer allocation messages and the
 engine's `scratch_reserved` records separately. Process/device totals do not by
 themselves identify those components; unavailable components remain unknown.
 
-On a separately authorized GPU test, set `MERLIN_CUDA_PROFILE` to a **new absolute
-file path** when launching the staged runtime through the existing endpoint or
-the staged backend test tool. An existing path is refused to preserve evidence.
+For a diagnostic direct run, set `MERLIN_CUDA_PROFILE` to a **new absolute
+file path** when launching the staged runtime. An existing path is refused to preserve evidence.
 The environment variable is read once per process. Never set it on production
 as an incidental diagnostic action; loading the staged runtime takes a deployment.
 
@@ -78,11 +83,11 @@ inference with profiling unset for performance comparisons.
 
 ## Kernel selection and build progress
 
-Set `MERLIN_KERNEL_LOG` to a new absolute JSONL path before starting the endpoint.
+Set `MERLIN_KERNEL_LOG` to a new absolute JSONL path before starting the direct runtime process.
 The runtime records the first 256 host dispatches in each matrix-column bucket
 (N=1, 2, 4, 8, or other), then every 1024. Without the variable, the same sampled records go
-to stderr, which the nonverbose endpoint suppresses; endpoint experiments must
-use the dedicated file. The same independently opened sink also records profile
+to stderr, which the nonverbose endpoint suppresses; direct runs should use the
+dedicated file so execution receipts persist. The same independently opened sink also records profile
 match status, reference-bypass reasons, workspace lifecycle, drift diagnostics and
 GPU completion receipts. Each record identifies calibration or inference mode. Records include the actual microbatch sequence count, tokens in flight,
 workload classification and its source, selected kernel, M/N/K and fusion state.
@@ -103,13 +108,14 @@ a positive count with GPU completion establishes sampled custom work. Uncaptured
 selected kernels emit `merlin_kernel_completion` after their CUDA stop event is
 ready, sampling the first submission and every 128th per key/kernel with an
 eight-slot ring. A busy ring drops a sample rather than waiting. Host dispatch
-records and calibration records do not establish endpoint GPU execution. Two reusable event
+records and calibration records do not establish full-model GPU execution. Two reusable event
 pairs per graph avoid blocking inference. Pending observations at teardown are
 reported as incomplete, never counted as completed work. Graph latency is not
 attributed to an individual kernel. `MERLIN_CUDA_PROFILE` additionally provides
 bounded operation completion timings and disables CUDA graphs for that diagnostic
-run. Leave it unset for performance measurements. The endpoint's existing request
-logs and `benchmarks/single_request.py` provide end-to-end timing.
+run. Leave it unset for performance measurements. Direct full-model runs need
+their own output, timing and runtime-identity evidence; the endpoint's request
+logs and `benchmarks/single_request.py` apply to the historical baseline.
 
 The builder prints timestamped START/DONE records and elapsed time for each
 command; redirect stdout and stderr to a persistent build log. The final manifest
@@ -119,8 +125,8 @@ revision and exact CMake source path, with the source restored clean before appl
 the new overlay. Preserve and verify the prior overlay before restoring it. It is
 not a way to reuse objects across different upstream versions.
 
-Remaining hardware evidence: exercise the combined runtime on RTX8000, compare
-outputs and logits, then measure long-context speed and memory. The profiler does
+Remaining hardware evidence: exercise the combined runtime directly on RTX8000,
+compare outputs and logits, then measure long-context speed and memory. The profiler does
 not measure physical memory traffic. Small matrix widths reach the MMVQ dispatch
 hook; larger widths reach the matrix hook. Both use the same measured policy;
 this hook routing is not a claimed performance crossover.
@@ -129,7 +135,10 @@ this hook routing is not a claimed performance crossover.
 
 `single_request.py` judges retrieval correctness only; its verdict explicitly does
 not prove engine viability. Stock baseline correctness remains useful on its own.
-After collecting runtime telemetry, use the separate offline evaluator:
+The following evaluator is tied to endpoint request windows and is **not** a
+current direct-run acceptance procedure. Direct full-model runs require matched
+runtime identity, output/logit, memory and timing evidence before any viability
+claim. For the historical endpoint workflow, the offline evaluator is:
 
 ```sh
 python3 benchmarks/engine_acceptance.py --case /absolute/custom-case --baseline /absolute/stock-case --telemetry /absolute/kernels.jsonl --output /absolute/acceptance.json
@@ -166,4 +175,4 @@ acceptance. Change only this setting between matched logging-overhead trials.
 on the host: 100,000 dispatch calls across five buckets plus one completion per
 128 calls, alternating three file-enabled and three disabled runs. This measures
 formatting/locking/file flushing only. It does not measure GPU event overhead or
-endpoint throughput; those require matched endpoint trials on the target GPU.
+full-model throughput; those require matched direct runs on the target GPU.

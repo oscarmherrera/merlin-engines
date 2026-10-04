@@ -1,6 +1,6 @@
 # RTX8000 kernel diagnosis — 13288e4
 
-The staged runtime was tested through `test-backend-ops` on the RTX8000. The existing 17-case runner completed 17/17 workloads with schema-3 receipts and correct numerical references. The endpoint was not restarted; the live process remains `dd4940e`.
+The staged runtime was tested directly through `test-backend-ops` on the RTX8000. The existing 17-case runner completed 17/17 workloads with schema-3 receipts and correct numerical references. After these measurements, the owner directed that the endpoint be restored to stock Bonsai and that subsequent engine tests use direct runs. The live endpoint now reports binding `prism-adfffbe` and commit `7f4081f1`; the staged custom runtime is not installed there.
 
 ## Decode
 
@@ -30,4 +30,4 @@ The compiler resource comparison confirms the staging change removed the prior s
 
 ## Decision
 
-The dispatcher must keep Prism as the production choice for these RTX8000 shapes because the custom candidates are still slower. The staged `13288e4` runtime has not been installed or loaded by the endpoint.
+Measured dispatch selects Prism for these RTX8000 shapes because the custom candidates are slower. The staged `13288e4` runtime has not been installed or loaded by the endpoint. A direct full-model run, logits comparison, and large-context custom comparison remain outstanding; these graph-case results alone do not establish engine viability.

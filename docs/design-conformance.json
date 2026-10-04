@@ -1,7 +1,7 @@
 {
   "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
   "design_version": "0.1, 2026-10-03",
-  "review_state": "RTX8000 runtime compiled and host-tested. GPU correctness, load VRAM, context behavior, hardware tuning and performance acceptance remain unverified.",
+  "review_state": "RTX8000 runtime 13288e4 compiled and passed 17/17 direct CUDA backend cases. Measured custom decode and prefill shapes remain slower than Prism. Endpoint restored to stock Bonsai; direct full-model, load VRAM, logits, large-context and viability evidence remain outstanding.",
   "requirements": [
     {
       "requirement": "Bonsai core and endpoint integration",
@@ -24,7 +24,7 @@
     {
       "requirement": "CUTLASS/CUDA fused ternary-to-tile prefill",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp. Four candidates compare32x32/64x64 tiles and1/2 shared stages; CUDA compilation passed; GPU validation pending.",
+      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp. Four candidates compare32x32/64x64 tiles and1/2 shared stages; CUDA compilation and 17 direct RTX8000 graph cases passed. At M5120/N2048/K17408 the best candidate was 1.06x slower than Prism.",
       "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; runtime.lock.json"
     },
     {
@@ -36,7 +36,7 @@
     {
       "requirement": "Native packed decode batches1/2/4/8",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Existing native decode retained and wrapped by measured selection. Previous prototype numeric results do not validate this new dispatcher.",
+      "finding": "Q8 packed add/sub decode is integrated for batches1/2/4/8. The direct RTX8000 graph runner accepted numerical results, but at M17408/K5120 the candidate was 2.59–5.91x slower than Prism across those batches.",
       "evidence": "engine/backends/cuda/decode_ternary/merlin-decode.cuh"
     },
     {
@@ -60,13 +60,13 @@
     {
       "requirement": "Startup warmup and persisted median calibration",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Metadata-derived representative shapes; explicit startup process invokes real backend graph; two warmups and five event samples per route. Compiled; execution pending.",
+      "finding": "Metadata-derived representative shapes; explicit startup process invokes real backend graphs; two warmups and five event samples per route. Direct graph-case execution passed; full-model startup profile behavior remains unverified.",
       "evidence": "scripts/calibrate_runtime.py; scripts/calibration_shapes.py; engine/dispatch/merlin-dispatch.cuh"
     },
     {
       "requirement": "Fastest correct candidate and unseen-shape reference",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Full-output finite/NMSE comparison and strict median improvement required; unprofiled/unsafe shapes keep Prism. GPU verification pending.",
+      "finding": "Full-output finite/NMSE comparison and strict median improvement required; unprofiled/unsafe shapes keep Prism. The direct RTX8000 cases numerically accepted custom candidates but their measured medians were slower, so these shapes select Prism. Full-model verification remains pending.",
       "evidence": "engine/dispatch/merlin-dispatch.cuh; engine/dispatch/merlin-dispatch-profile.h"
     },
     {
@@ -90,7 +90,7 @@
     {
       "requirement": "Profiler latency/bytes/workspace/selection/end-to-end",
       "status": "IMPLEMENTED_WITH_MEASUREMENT_LIMITS",
-      "finding": "Operator/calibration timing, sampled actual graph completion, route and actual workload, used/reserved scratch, shared-per-block storage and endpoint timing are instrumented. Logical operand byte footprints are explicitly estimates; physical DRAM transactions are not measured. Hardware observations pending.",
+      "finding": "Operator/calibration timing, sampled actual graph completion, route and actual workload, used/reserved scratch, shared-per-block storage and endpoint timing are instrumented. Direct graph-case timings were collected. Logical operand byte footprints are estimates; physical DRAM transactions and direct full-model throughput are not measured.",
       "evidence": "engine/telemetry/merlin-profile.cuh; engine/telemetry/merlin-kernel-log.cuh; benchmarks/single_request.py"
     },
     {
@@ -108,8 +108,8 @@
     {
       "requirement": "Correctness/logits, stability and speed acceptance gates",
       "status": "NOT_VERIFIED",
-      "finding": "Integrated CUDA build passed at dd4940e. GPU logits, long context, batching/prefix, load VRAM, stability and improvement remain unverified.",
-      "evidence": "docs/prefill-kernel.md"
+      "finding": "Integrated CUDA build at 13288e4 and 17/17 direct backend cases passed. Custom logits, direct full-model inference, long context, batching/prefix, custom load VRAM, stability and improvement remain unverified. The measured custom graph shapes are slower than Prism.",
+      "evidence": "docs/benchmarks/rtx8000-13288e4-kernel-diagnosis.md"
     },
     {
       "requirement": "3090/P40 then R9700",
@@ -138,13 +138,13 @@
     "gpu_performance": "NOT RUN",
     "deployed": false
   },
-  "validation": {
+  "historical_validation_at_dd4940e_build": {
     "cuda_build": "PASS",
     "local_script_tests_passed": 13,
     "workload_transport": "PASS: pinned headers, cross-DSO and threads",
     "gpu_correctness": "NOT RUN",
     "gpu_performance": "NOT RUN",
-    "deployed": false,
+    "deployment_history": "dd4940e was subsequently installed on the RTX8000 and later replaced by the restored stock Bonsai runtime",
     "first_check_after_model_load": "Record device/process VRAM before first inference; record available loader/KV and reserved-scratch evidence separately.",
     "engine_revision": "dd4940ef9602bb65e7febf7cb2043cc48ad791ae",
     "cuda_build_seconds": 84.522,
@@ -153,5 +153,24 @@
     "artifact_host": "10.200.55.30",
     "artifact_directory": "/home/oscar/merlin-engine-builds/dd4940e",
     "endpoint": "Existing ABI-compatible endpoint binary reused; no Go endpoint code changes"
+  },
+  "current_validation": {
+    "engine_revision": "13288e41c4e83d89061ddf16f5dbfd4610f65e47",
+    "source_head": "4bbfd0e",
+    "cuda_build": "PASS",
+    "cuda_architecture": "75",
+    "build_jobs": 6,
+    "artifact_host": "10.200.55.30",
+    "artifact_directory": "/home/oscar/merlin-engine-builds/13288e4",
+    "staged_rtx8000_runtime": "/home/oscar/merlin-engine-stage-13288e4/runtime",
+    "direct_backend_cases": "PASS: 17/17 RTX8000 graph cases with numerical references and execution receipts",
+    "decode_M17408_K5120": "Q8 batches1/2/4/8 2.59–5.91x slower than Prism",
+    "prefill_M5120_N2048_K17408": "best CUTLASS candidate 1.06x slower than Prism",
+    "direct_full_model": "NOT RUN",
+    "custom_load_vram": "NOT MEASURED",
+    "large_context_custom": "NOT RUN",
+    "endpoint_binding": "RESTORED TO STOCK prism-adfffbe on 2026-10-04",
+    "installed_current_runtime": false,
+    "test_policy": "Direct runs only until the owner changes this instruction; no SpecKit work until viable."
   }
 }
