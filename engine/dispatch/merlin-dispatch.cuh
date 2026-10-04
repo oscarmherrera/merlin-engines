@@ -327,7 +327,7 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
     const auto * selected = forced ? nullptr : merlin_dispatch::select(storage.costs, shape, candidates, candidate_count);
     if (forced) {
         for (size_t i = 0; i < candidate_count; ++i) {
-            if (std::strcmp(candidates[i].id, "pq2_q8_1_addsub_warp") == 0) {
+            if (std::strcmp(candidates[i].id, "pq2_q8_1_dp4a_warp") == 0) {
                 selected = &candidates[i];
                 break;
             }

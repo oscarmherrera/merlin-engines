@@ -7,9 +7,11 @@
 
 #include <cstdint>
 
-static __device__ __forceinline__ int merlin_pq2_add(int sum, int value, unsigned code) {
-    const int magnitude = code == 3 ? value + value : value;
-    return sum + (code == 0 ? -magnitude : code == 1 ? 0 : magnitude);
+static __device__ __forceinline__ int merlin_pq2_dp4a_weights(unsigned packed) {
+    const unsigned codes = (packed & 0x03u) | ((packed & 0x0cu) << 6) |
+        ((packed & 0x30u) << 12) | ((packed & 0xc0u) << 18);
+    // Adding 0x7f stays within each byte; XOR maps PQ2 codes 0..3 to -1..2.
+    return int((codes + 0x7f7f7f7fu) ^ 0x80808080u);
 }
 
 // A warp owns one output row; each lane accumulates complete 32-value integer dot groups.
@@ -43,18 +45,21 @@ static __global__ void merlin_pq2_decode(
         for (int n = 0; n < batch; ++n) {
             const block_q8_1 & activation = activations[int64_t(n) * activation_stride + chunk];
             int dot = 0, gate_dot = 0;
+            const int32_t * a4 = reinterpret_cast<const int32_t *>(activation.qs);
+            const uint16_t * w2 = reinterpret_cast<const uint16_t *>(w[b].qs + packed_offset);
+            const uint16_t * gate2 = nullptr;
+            if constexpr (gated) { gate2 = reinterpret_cast<const uint16_t *>(gate[b].qs + packed_offset); }
 #pragma unroll
-            for (int byte = 0; byte < 8; ++byte) {
-                const unsigned packed = w[b].qs[packed_offset + byte];
-                unsigned packed_gate = 0;
-                if constexpr (gated) { packed_gate = gate[b].qs[packed_offset + byte]; }
-#pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    const int value = activation.qs[4 * byte + i];
-                    dot = merlin_pq2_add(dot, value, (packed >> (2 * i)) & 3);
-                    if constexpr (gated) {
-                        gate_dot = merlin_pq2_add(gate_dot, value, (packed_gate >> (2 * i)) & 3);
-                    }
+            for (int pair = 0; pair < 4; ++pair) {
+                const unsigned packed = w2[pair];
+                const int left = a4[2 * pair];
+                const int right = a4[2 * pair + 1];
+                dot = __dp4a(left, merlin_pq2_dp4a_weights(packed & 0xffu), dot);
+                dot = __dp4a(right, merlin_pq2_dp4a_weights(packed >> 8), dot);
+                if constexpr (gated) {
+                    const unsigned packed_gate = gate2[pair];
+                    gate_dot = __dp4a(left, merlin_pq2_dp4a_weights(packed_gate & 0xffu), gate_dot);
+                    gate_dot = __dp4a(right, merlin_pq2_dp4a_weights(packed_gate >> 8), gate_dot);
                 }
             }
             const float activation_scale = __low2float(activation.ds);
@@ -204,7 +209,7 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
     merlin_dispatch_candidate candidates[5]{};
     size_t count = 0;
     if (native) {
-        candidates[count++] = {"pq2_q8_1_addsub_warp", size_t(src1->ne[1] * activation_stride) * sizeof(block_q8_1), [](void * opaque) {
+        candidates[count++] = {"pq2_q8_1_dp4a_warp", size_t(src1->ne[1] * activation_stride) * sizeof(block_q8_1), [](void * opaque) {
             auto & a = *static_cast<arguments *>(opaque);
             a.prepare_q8();
             switch (a.input->ne[1]) {
