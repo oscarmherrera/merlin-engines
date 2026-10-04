@@ -243,8 +243,8 @@ inline void calibration_receipt(const key & shape, size_t records, bool referenc
 
 inline const merlin_dispatch_candidate * select(const profile & costs, const key & shape,
         const merlin_dispatch_candidate * candidates, size_t count) {
-    GGML_ASSERT(count <= 5);
-    const char * names[5]{};
+    GGML_ASSERT(count <= 6);
+    const char * names[6]{};
     for (size_t i = 0; i < count; ++i) {
         names[i] = candidates[i].id;
     }
