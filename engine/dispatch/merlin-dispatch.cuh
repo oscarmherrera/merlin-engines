@@ -243,8 +243,8 @@ inline void calibration_receipt(const key & shape, size_t records, bool referenc
 
 inline const merlin_dispatch_candidate * select(const profile & costs, const key & shape,
         const merlin_dispatch_candidate * candidates, size_t count) {
-    GGML_ASSERT(count <= 6);
-    const char * names[6]{};
+    GGML_ASSERT(count <= 5);
+    const char * names[5]{};
     for (size_t i = 0; i < count; ++i) {
         names[i] = candidates[i].id;
     }
@@ -334,7 +334,7 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
         }
         if (!selected) {
             for (size_t i = 0; i < candidate_count; ++i) {
-                if (std::strcmp(candidates[i].id, merlin_dispatch::cutlass_rect_single) == 0) {
+                if (std::strcmp(candidates[i].id, merlin_dispatch::cutlass_wide_single) == 0) {
                     selected = &candidates[i];
                     break;
                 }
