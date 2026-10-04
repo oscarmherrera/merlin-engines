@@ -206,7 +206,7 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
         auto & a = *static_cast<arguments *>(opaque);
         a.baseline();
     };
-    merlin_dispatch_candidate candidates[5]{};
+    merlin_dispatch_candidate candidates[6]{};
     size_t count = 0;
     if (native) {
         candidates[count++] = {"pq2_q8_1_dp4a_warp", size_t(src1->ne[1] * activation_stride) * sizeof(block_q8_1), [](void * opaque) {
@@ -238,6 +238,10 @@ static bool merlin_cuda_decode(ggml_backend_cuda_context & ctx,
             auto & a = *static_cast<arguments *>(opaque);
             merlin_prefill_launch_wide_single(a.ctx, a.weights, a.input, a.output);
         }, &args, merlin_prefill_shared_bytes(true, true)};
+        candidates[count++] = {merlin_dispatch::cutlass_rect_single, workspace, [](void * opaque) {
+            auto & a = *static_cast<arguments *>(opaque);
+            merlin_prefill_launch_rect_single(a.ctx, a.weights, a.input, a.output);
+        }, &args, merlin_prefill_shared_bytes_rect()};
     }
     int64_t fusion_key = 0;
     if (fusion) {

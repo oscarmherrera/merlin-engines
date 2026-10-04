@@ -10,7 +10,7 @@ static bool merlin_prefill_profile_eligible(int device) {
     auto & storage = merlin_dispatch::state(device);
     std::lock_guard<std::mutex> lock(storage.mutex);
     for (const auto & row : storage.costs.entries) {
-        if (storage.costs.choose(row.first, merlin_dispatch::cutlass_candidates, 4) >= 0) { return true; }
+        if (storage.costs.choose(row.first, merlin_dispatch::cutlass_candidates, 5) >= 0) { return true; }
     }
     return false;
 }
@@ -64,6 +64,10 @@ static bool merlin_dispatch_prefill(ggml_backend_cuda_context & ctx, const ggml_
             auto & a = *static_cast<arguments *>(opaque);
             merlin_prefill_launch_wide_single(a.ctx, a.weights, a.input, a.output);
         }, &args, merlin_prefill_shared_bytes(true, true)},
+        {merlin_dispatch::cutlass_rect_single, workspace, [](void * opaque) {
+            auto & a = *static_cast<arguments *>(opaque);
+            merlin_prefill_launch_rect_single(a.ctx, a.weights, a.input, a.output);
+        }, &args, merlin_prefill_shared_bytes_rect()},
     };
     const merlin_dispatch::key shape{ggml_cuda_info().devices[ctx.device].cc, GGML_OP_MUL_MAT,
         weights->ne[1], input->ne[1], weights->ne[0], workload.sequence_batch, workload.tokens_in_flight,

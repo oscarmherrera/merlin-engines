@@ -334,7 +334,7 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
         }
         if (!selected) {
             for (size_t i = 0; i < candidate_count; ++i) {
-                if (std::strcmp(candidates[i].id, merlin_dispatch::cutlass_wide_single) == 0) {
+                if (std::strcmp(candidates[i].id, merlin_dispatch::cutlass_rect_single) == 0) {
                     selected = &candidates[i];
                     break;
                 }
