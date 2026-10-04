@@ -3,10 +3,10 @@
 #include "merlin-dispatch.cuh"
 #include "merlin-prefill.cuh"
 
-// Startup reserves only for a measured CUTLASS candidate that can beat Prism, or calibration.
+// Startup reserves for calibration, forced diagnosis, or a measured CUTLASS winner.
 static bool merlin_prefill_profile_eligible(int device) {
     if (ggml_cuda_info().devices[device].cc != GGML_CUDA_CC_TURING) { return false; }
-    if (merlin_dispatch_calibrating()) { return true; }
+    if (merlin_dispatch_calibrating() || merlin_dispatch_force_custom()) { return true; }
     auto & storage = merlin_dispatch::state(device);
     std::lock_guard<std::mutex> lock(storage.mutex);
     for (const auto & row : storage.costs.entries) {

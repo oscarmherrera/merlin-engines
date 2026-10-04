@@ -22,6 +22,14 @@ inline bool merlin_dispatch_calibrating() {
     return enabled;
 }
 
+inline bool merlin_dispatch_force_custom() {
+    static const bool enabled = [] {
+        const char * value = std::getenv("MERLIN_ENGINE_FORCE_CUSTOM");
+        return value && std::strcmp(value, "1") == 0;
+    }();
+    return enabled;
+}
+
 inline bool & merlin_dispatch_reference_active() {
     static thread_local bool active = false;
     return active;
@@ -315,8 +323,26 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
         }
         merlin_dispatch::calibration_receipt(shape, rows.size(), reference_finite && reference_ms > 0);
     }
-    const auto * selected = merlin_dispatch::select(storage.costs, shape, candidates, candidate_count);
-    const char * reason = selected ? "measured_faster" :
+    const bool forced = merlin_dispatch_force_custom();
+    const auto * selected = forced ? nullptr : merlin_dispatch::select(storage.costs, shape, candidates, candidate_count);
+    if (forced) {
+        for (size_t i = 0; i < candidate_count; ++i) {
+            if (std::strcmp(candidates[i].id, "pq2_q8_1_addsub_warp") == 0) {
+                selected = &candidates[i];
+                break;
+            }
+        }
+        if (!selected) {
+            for (size_t i = 0; i < candidate_count; ++i) {
+                if (std::strcmp(candidates[i].id, merlin_dispatch::cutlass_wide_single) == 0) {
+                    selected = &candidates[i];
+                    break;
+                }
+            }
+        }
+    }
+    const char * reason = forced ? (selected ? "forced_diagnostic" : "forced_no_candidate") :
+        selected ? "measured_faster" :
         !storage.costs.reference(shape) ? "unseen_or_invalid_reference" : "no_correct_faster_candidate";
     const auto observer = merlin_dispatch::capture_observer_current();
     if (selected && capture != cudaStreamCaptureStatusNone && observer.record &&
@@ -325,7 +351,7 @@ inline void merlin_dispatch_run(ggml_backend_cuda_context & ctx, const merlin_di
         selected = nullptr; // A graph never embeds a custom selection the bounded monitor cannot track.
     }
     merlin_dispatch::device_state::drift_slot * sample = nullptr;
-    if (selected && !merlin_dispatch_calibrating() && capture == cudaStreamCaptureStatusNone) {
+    if (selected && !forced && !merlin_dispatch_calibrating() && capture == cudaStreamCaptureStatusNone) {
         sample = storage.sample(shape, selected->id);
     }
     if (sample) { CUDA_CHECK(cudaEventRecord(sample->start, ctx.stream())); }

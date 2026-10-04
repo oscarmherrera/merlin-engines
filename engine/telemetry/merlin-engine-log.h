@@ -22,7 +22,9 @@ inline long long merlin_log_unix_ms() {
 }
 inline const char * merlin_log_mode() {
     const char * value = std::getenv("MERLIN_ENGINE_CALIBRATE");
-    return value && std::strcmp(value, "1") == 0 ? "calibration" : "inference";
+    if (value && std::strcmp(value, "1") == 0) { return "calibration"; }
+    value = std::getenv("MERLIN_ENGINE_FORCE_CUSTOM");
+    return value && std::strcmp(value, "1") == 0 ? "forced_diagnostic" : "inference";
 }
 inline FILE * merlin_engine_log_file() {
     static FILE * file = [] {
