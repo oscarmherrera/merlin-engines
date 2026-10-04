@@ -7,11 +7,11 @@
 
 #include <cstdint>
 
-static __device__ __forceinline__ int merlin_pq2_dp4a_weights(unsigned packed) {
-    const unsigned codes = (packed & 0x03u) | ((packed & 0x0cu) << 6) |
-        ((packed & 0x30u) << 12) | ((packed & 0xc0u) << 18);
-    // Adding 0x7f stays within each byte; XOR maps PQ2 codes 0..3 to -1..2.
-    return int((codes + 0x7f7f7f7fu) ^ 0x80808080u);
+static __device__ __forceinline__ void merlin_pq2_dp4a_pair(int q, int & x, int & y) {
+    const int even = __byte_perm(0x020100FF, 0x020100FF, q);
+    const int odd = __byte_perm(0x020100FF, 0x020100FF, q >> 2);
+    x = __byte_perm(even, odd, 0x5140);
+    y = __byte_perm(even, odd, 0x7362);
 }
 
 // A warp owns one output row; each lane accumulates complete 32-value integer dot groups.
@@ -51,15 +51,19 @@ static __global__ void merlin_pq2_decode(
             if constexpr (gated) { gate2 = reinterpret_cast<const uint16_t *>(gate[b].qs + packed_offset); }
 #pragma unroll
             for (int pair = 0; pair < 4; ++pair) {
-                const unsigned packed = w2[pair];
+                const int packed = static_cast<int16_t>(w2[pair]);
                 const int left = a4[2 * pair];
                 const int right = a4[2 * pair + 1];
-                dot = __dp4a(left, merlin_pq2_dp4a_weights(packed & 0xffu), dot);
-                dot = __dp4a(right, merlin_pq2_dp4a_weights(packed >> 8), dot);
+                int x, y;
+                merlin_pq2_dp4a_pair(packed, x, y);
+                dot = __dp4a(left, x, dot);
+                dot = __dp4a(right, y, dot);
                 if constexpr (gated) {
-                    const unsigned packed_gate = gate2[pair];
-                    gate_dot = __dp4a(left, merlin_pq2_dp4a_weights(packed_gate & 0xffu), gate_dot);
-                    gate_dot = __dp4a(right, merlin_pq2_dp4a_weights(packed_gate >> 8), gate_dot);
+                    const int packed_gate = static_cast<int16_t>(gate2[pair]);
+                    int gx, gy;
+                    merlin_pq2_dp4a_pair(packed_gate, gx, gy);
+                    gate_dot = __dp4a(left, gx, gate_dot);
+                    gate_dot = __dp4a(right, gy, gate_dot);
                 }
             }
             const float activation_scale = __low2float(activation.ds);
@@ -98,6 +102,81 @@ static __global__ void merlin_pq2_decode(
     }
 }
 
+// Output rows share each quantized activation load at small batch widths.
+template<int batch, int rows>
+static __global__ void merlin_pq2_decode_batched(
+        const block_pq2_0 * __restrict__ weights,
+        const block_q8_1 * __restrict__ activations,
+        float * __restrict__ output,
+        int64_t m, int64_t k, int64_t activation_stride) {
+    const int lane = threadIdx.x;
+    const int64_t first_row = (int64_t(blockIdx.x) * blockDim.y + threadIdx.y) * rows;
+    if (first_row >= m) { return; }
+    const int64_t blocks = k / QK_PQ2_0;
+    float sums[batch][rows] = {};
+
+    for (int64_t chunk = lane; chunk < k / QK8_1; chunk += 32) {
+        const int64_t b = chunk / 4;
+        const int packed_offset = (chunk % 4) * 8;
+        int unpacked[rows][8] = {};
+        float weight_scale[rows] = {};
+#pragma unroll
+        for (int r = 0; r < rows; ++r) {
+            if (first_row + r >= m) { continue; }
+            const block_pq2_0 & weight = weights[(first_row + r) * blocks + b];
+            weight_scale[r] = __half2float(weight.d);
+            const uint16_t * packed_words = reinterpret_cast<const uint16_t *>(weight.qs + packed_offset);
+#pragma unroll
+            for (int pair = 0; pair < 4; ++pair) {
+                const int q = static_cast<int16_t>(packed_words[pair]);
+                const int even = __byte_perm(0x020100FF, 0x020100FF, q);
+                const int odd = __byte_perm(0x020100FF, 0x020100FF, q >> 2);
+                unpacked[r][2 * pair] = __byte_perm(even, odd, 0x5140);
+                unpacked[r][2 * pair + 1] = __byte_perm(even, odd, 0x7362);
+            }
+        }
+
+#pragma unroll
+        for (int n = 0; n < batch; ++n) {
+            const block_q8_1 & activation = activations[int64_t(n) * activation_stride + chunk];
+            const int32_t * q8 = reinterpret_cast<const int32_t *>(activation.qs);
+            int dots[rows] = {};
+#pragma unroll
+            for (int pair = 0; pair < 4; ++pair) {
+                const int left = q8[2 * pair];
+                const int right = q8[2 * pair + 1];
+#pragma unroll
+                for (int r = 0; r < rows; ++r) {
+                    if (first_row + r >= m) { continue; }
+                    dots[r] = __dp4a(left, unpacked[r][2 * pair], dots[r]);
+                    dots[r] = __dp4a(right, unpacked[r][2 * pair + 1], dots[r]);
+                }
+            }
+            const float activation_scale = __low2float(activation.ds);
+#pragma unroll
+            for (int r = 0; r < rows; ++r) {
+                if (first_row + r >= m) { continue; }
+                sums[n][r] += weight_scale[r] * activation_scale * dots[r];
+            }
+        }
+    }
+
+#pragma unroll
+    for (int n = 0; n < batch; ++n) {
+#pragma unroll
+        for (int r = 0; r < rows; ++r) {
+            float sum = sums[n][r];
+#pragma unroll
+            for (int delta = 16; delta > 0; delta >>= 1) {
+                sum += __shfl_down_sync(0xffffffff, sum, delta);
+            }
+            if (lane == 0 && first_row + r < m) {
+                output[int64_t(n) * m + first_row + r] = sum;
+            }
+        }
+    }
+}
+
 static bool merlin_decode_matrix(const ggml_tensor * t, int device) {
     if (!t) {
         return false;
@@ -124,15 +203,27 @@ static void merlin_launch_decode(ggml_backend_cuda_context & ctx,
         const ggml_tensor * src0, const ggml_tensor * /* src1 */, ggml_tensor * dst,
         ggml_cuda_mm_fusion_args_device fusion, const block_q8_1 * activations, int64_t activation_stride) {
     const dim3 threads(32, 4);
-    const dim3 blocks((src0->ne[1] + 3) / 4);
     const auto * weights = static_cast<const block_pq2_0 *>(src0->data);
     auto * output = static_cast<float *>(dst->data);
-    if (fusion.gate) {
-        merlin_pq2_decode<batch, true><<<blocks, threads, 0, ctx.stream()>>>(
-            weights, activations, output, src0->ne[1], src0->ne[0], activation_stride, fusion);
+    if constexpr (batch == 1) {
+        if (fusion.gate || fusion.x_bias || fusion.gate_bias) {
+            const dim3 blocks((src0->ne[1] + 3) / 4);
+            if (fusion.gate) {
+                merlin_pq2_decode<batch, true><<<blocks, threads, 0, ctx.stream()>>>(
+                    weights, activations, output, src0->ne[1], src0->ne[0], activation_stride, fusion);
+            } else {
+                merlin_pq2_decode<batch, false><<<blocks, threads, 0, ctx.stream()>>>(
+                    weights, activations, output, src0->ne[1], src0->ne[0], activation_stride, fusion);
+            }
+        } else {
+            const dim3 blocks((src0->ne[1] + 15) / 16);
+            merlin_pq2_decode_batched<batch, 4><<<blocks, threads, 0, ctx.stream()>>>(
+                weights, activations, output, src0->ne[1], src0->ne[0], activation_stride);
+        }
     } else {
-        merlin_pq2_decode<batch, false><<<blocks, threads, 0, ctx.stream()>>>(
-            weights, activations, output, src0->ne[1], src0->ne[0], activation_stride, fusion);
+        const dim3 blocks((src0->ne[1] + 15) / 16);
+        merlin_pq2_decode_batched<batch, 4><<<blocks, threads, 0, ctx.stream()>>>(
+            weights, activations, output, src0->ne[1], src0->ne[0], activation_stride);
     }
     CUDA_CHECK(cudaGetLastError());
 }
