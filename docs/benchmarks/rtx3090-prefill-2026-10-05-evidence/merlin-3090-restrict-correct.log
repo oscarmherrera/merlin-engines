@@ -1,0 +1,20 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24126 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+{"schema":1,"event":"merlin_engine_diagnostic","unix_ms":1791173353099,"pid":216329,"mode":"forced_diagnostic","message":"merlin-engine: scratch_reserved device=0 stream=0 reserved_bytes=134217728 lifetime=backend"}
+{"schema":1,"event":"merlin_profile_status","profile_match":false,"mode":"forced_diagnostic","device":0,"pid":216329,"unix_ms":1791173353588,"engine_revision":"2baef00f92fae1b41bedc9e6786264b88a69aeba"}
+{"schema":2,"event":"merlin_kernel_dispatch","unix_ms":1791173353594,"matrix_column_bucket_submission":1,"phase":"multi_token_per_sequence","kernel":"pq2_cutlass_128x128x128_s1","device":0,"m":17408,"n":2048,"k":5120,"workspace_bytes":11796480,"shared_bytes_per_block":35328,"fused":false,"workspace_reserved_bytes":134217728,"logical_tensor_read_bytes_estimate":65617920,"logical_tensor_write_bytes_estimate":142606336,"physical_dram_traffic_measured":false,"logical_bytes_scope":"operator_operand_footprints_excluding_scratch","sequence_batch":1,"tokens_in_flight":2048,"phase_source":"explicit_calibration_workload","reason":"forced_diagnostic","mode":"forced_diagnostic","pid":216329,"gpu_completion":false,"counts_graph_replays":false}
+Testing 2 devices
+
+Backend 1/2: CUDA0
+  Device description: NVIDIA GeForce RTX 3090
+  Device memory: 24126 MB (4401 MB free)
+
+  MUL_MAT(name=pq2_m17408_n2048_k5120_f0_c0,type=f32,ne=[17408,2048,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,2048,1,1]): {"schema":2,"event":"merlin_kernel_dispatch","unix_ms":1791173355978,"matrix_column_bucket_submission":2,"phase":"multi_token_per_sequence","kernel":"pq2_cutlass_128x128x128_s1","device":0,"m":5120,"n":2048,"k":17408,"workspace_bytes":40108032,"shared_bytes_per_block":35328,"fused":false,"workspace_reserved_bytes":134217728,"logical_tensor_read_bytes_estimate":166281216,"logical_tensor_write_bytes_estimate":41943040,"physical_dram_traffic_measured":false,"logical_bytes_scope":"operator_operand_footprints_excluding_scratch","sequence_batch":1,"tokens_in_flight":2048,"phase_source":"explicit_calibration_workload","reason":"forced_diagnostic","mode":"forced_diagnostic","pid":216329,"gpu_completion":false,"counts_graph_replays":false}
+[1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n2048_k17408_f0_c0,type=f32,ne=[5120,2048,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,2048,1,1]): [1;32mOK[0m
+  2/2 tests passed
+  Backend CUDA0: [1;32mOK[0m
+Backend 2/2: CPU
+  Skipping
+2/2 backends passed
+[1;32mOK[0m

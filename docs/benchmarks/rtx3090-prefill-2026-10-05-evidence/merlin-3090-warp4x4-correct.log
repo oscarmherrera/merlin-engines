@@ -1,0 +1,33 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24126 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+{"schema":1,"event":"merlin_engine_diagnostic","unix_ms":1791173617471,"pid":216949,"mode":"forced_diagnostic","message":"merlin-engine: scratch_reserved device=0 stream=0 reserved_bytes=134217728 lifetime=backend"}
+{"schema":1,"event":"merlin_profile_status","profile_match":false,"mode":"forced_diagnostic","device":0,"pid":216949,"unix_ms":1791173617987,"engine_revision":"2baef00f92fae1b41bedc9e6786264b88a69aeba"}
+CUDA error: too many resources requested for launch
+  current device: 0, in function merlin_prefill_launch_tile at /tmp/merlin-engine-build-41a8783/source/ggml/src/ggml-cuda/merlin-prefill.cu:122
+  cudaGetLastError()
+Testing 2 devices
+
+Backend 1/2: CUDA0
+  Device description: NVIDIA GeForce RTX 3090
+  Device memory: 24126 MB (4403 MB free)
+
+/tmp/merlin-engine-build-41a8783/source/ggml/src/ggml-cuda/ggml-cuda.cu:111: CUDA error
+./libggml-base.so.0(+0x1c2fb) [0x7f644dc152fb]
+./libggml-base.so.0(ggml_print_backtrace+0x21c) [0x7f644dc1577c]
+./libggml-base.so.0(ggml_abort+0x15b) [0x7f644dc1595b]
+./libggml-cuda.so.0(_Z15ggml_cuda_errorPKcS0_S0_iS0_+0xb7) [0x7f6449c7a937]
+./libggml-cuda.so.0(_Z33merlin_prefill_launch_wide_singleR25ggml_backend_cuda_contextPK11ggml_tensorS3_PS1_+0xdfc) [0x7f644a9837cc]
+./libggml-cuda.so.0(_Z19merlin_dispatch_runR25ggml_backend_cuda_contextRKN15merlin_dispatch3keyEPfmPFvPvES6_PK25merlin_dispatch_candidatem20merlin_logical_bytes+0xede) [0x7f6449ca32be]
+./libggml-cuda.so.0(+0x28c80e) [0x7f6449c8c80e]
+./libggml-cuda.so.0(+0x28e4a9) [0x7f6449c8e4a9]
+./libggml-cuda.so.0(+0x2915cd) [0x7f6449c915cd]
+./libggml-cuda.so.0(+0x294037) [0x7f6449c94037]
+./libggml-base.so.0(ggml_backend_graph_compute+0x12) [0x7f644dc2ed02]
+./libggml-base.so.0(ggml_backend_compare_graph_backend+0x211) [0x7f644dc33fc1]
+./test-backend-ops(+0xb2cc6) [0x624cf9fd1cc6]
+./test-backend-ops(+0x389c7) [0x624cf9f579c7]
+./test-backend-ops(+0x64cf5) [0x624cf9f83cf5]
+./test-backend-ops(+0x1f6ff) [0x624cf9f3e6ff]
+/usr/lib/x86_64-linux-gnu/libc.so.6(+0x2a601) [0x7f644d42a601]
+/usr/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x88) [0x7f644d42a718]
+./test-backend-ops(+0x21155) [0x624cf9f40155]
