@@ -1,0 +1,17 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24126 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+Testing 2 devices
+
+Backend 1/2: CUDA0
+  Device description: NVIDIA GeForce RTX 3090
+  Device memory: 24126 MB (4521 MB free)
+
+ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+  MUL_MAT(name=pq2_m17408_n2048_k5120_f0_c0,type=f32,ne=[17408,2048,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,2048,1,1]):                 332 runs -  3372.35 us/run -   203344 kB/run - [1;34m  57.50 GB/s[0m
+ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+  MUL_MAT(name=pq2_m5120_n2048_k17408_f0_c0,type=f32,ne=[5120,2048,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,2048,1,1]):                 332 runs -  3452.89 us/run -   203344 kB/run - [1;34m  56.16 GB/s[0m
+  Backend CUDA0: [1;32mOK[0m
+Backend 2/2: CPU
+  Skipping
+2/2 backends passed
+[1;32mOK[0m
