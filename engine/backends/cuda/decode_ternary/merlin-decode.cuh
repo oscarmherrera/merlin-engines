@@ -231,7 +231,8 @@ static void merlin_launch_decode(ggml_backend_cuda_context & ctx,
 static bool merlin_decode_supported(ggml_backend_cuda_context & ctx,
         const ggml_tensor * src0, const ggml_tensor * src1, const ggml_tensor * ids,
         ggml_tensor * dst, const ggml_cuda_mm_fusion_args_host * fusion) {
-    if (ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_TURING || ids ||
+    const int cc = ggml_cuda_info().devices[ctx.device].cc;
+    if ((cc != GGML_CUDA_CC_TURING && cc != 860) || ggml_cuda_highest_compiled_arch(cc) < cc || ids ||
             src0->type != GGML_TYPE_PQ2_0 || src1->type != GGML_TYPE_F32 || dst->type != GGML_TYPE_F32 ||
             !merlin_decode_matrix(src0, ctx.device) || !merlin_decode_matrix(src1, ctx.device) ||
             !merlin_decode_matrix(dst, ctx.device)) {

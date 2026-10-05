@@ -28,6 +28,7 @@ def main():
     parser.add_argument('--host-cxx', default='/usr/bin/g++-13')
     parser.add_argument('--host-cc', default='/usr/bin/gcc-13')
     parser.add_argument('--jobs', type=int, default=6)
+    parser.add_argument('--cuda-arch', choices=('75', '86'), default='75')
     parser.add_argument('--source-cache', type=Path, help='Existing local Git checkout of the pinned runtime')
     parser.add_argument('--scratch', type=Path, help='New directory for temporary source and objects')
     parser.add_argument('--reuse-scratch', action='store_true',
@@ -82,7 +83,7 @@ def main():
                             min(item.stat().st_mtime_ns for item in objects) - 1000000000)
     run('cmake', '-S', source, '-B', build,
         '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=ON', '-DGGML_NATIVE=OFF',
-        '-DGGML_CUDA=ON', '-DGGML_CUDA_FA_ALL_QUANTS=OFF', '-DCMAKE_CUDA_ARCHITECTURES=75',
+        '-DGGML_CUDA=ON', '-DGGML_CUDA_FA_ALL_QUANTS=OFF', f'-DCMAKE_CUDA_ARCHITECTURES={args.cuda_arch}',
         f'-DGGML_CUDA_CUTLASS_DIR={cutlass}',
         f'-DCMAKE_CUDA_COMPILER={nvcc}', f'-DCUDAToolkit_ROOT={cuda}',
         f'-DCMAKE_CUDA_HOST_COMPILER={args.host_cxx}', f'-DCMAKE_CXX_COMPILER={args.host_cxx}',
@@ -117,7 +118,7 @@ def main():
         shutil.copyfile(root / 'scripts' / name, bundle / name)
     manifest = {'engine_revision': engine_revision, 'runtime_revision': lock['runtime_revision'],
                 'cutlass_revision': lock['cutlass_revision'], 'cutlass_tag': lock['cutlass_tag'],
-                'endpoint_binding': lock['endpoint_binding'], 'cuda_architectures': ['75'],
+                'endpoint_binding': lock['endpoint_binding'], 'cuda_architectures': [args.cuda_arch],
                 'reused_objects_same_upstream': args.reuse_scratch,
                 'build_jobs': args.jobs,
                 'nvcc': compiler.strip(), 'host_cxx': subprocess.check_output(
