@@ -1,0 +1,14 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 48402 MiB):
+  Device 0: Quadro RTX 8000, compute capability 7.5, VMM: yes, VRAM: 48402 MiB
+Testing 2 devices
+
+Backend 1/2: CUDA0
+  Device description: Quadro RTX 8000
+  Device memory: 48402 MB (29686 MB free)
+
+  MUL_MAT(name=pq2_m5120_n2048_k17408_f0_c0,type=f32,ne=[5120,2048,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,2048,1,1]):                 166 runs -  6307.43 us/run -   203344 kB/run - [1;34m  30.75 GB/s[0m
+  Backend CUDA0: [1;32mOK[0m
+Backend 2/2: CPU
+  Skipping
+2/2 backends passed
+[1;32mOK[0m

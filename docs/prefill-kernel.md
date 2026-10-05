@@ -14,11 +14,12 @@ PQ2 MMQ arithmetic. Floating-point accumulation order can differ from Prism's
 parallel reduction and must pass the measured dispatcher's numeric comparison.
 The graph's Hadamard handling remains before dispatch.
 
-Four candidates combine 32×32 and 64×64 output tiles with one or two shared stages,
-all with K=64 and four warps.
-Their respective warp tiles are 16×16×64 and 32×32×64. Both use CUTLASS
+The original narrow and wide candidates use 32×32 and 64×64 output tiles,
+K=64, and four warps. Their respective warp tiles are 16×16×64 and 32×32×64.
+The wide single-stage candidate now uses a 128×128×128 tile with eight warps;
+each warp computes a 32×64 output tile. All use CUTLASS
 `DefaultMmaTensorOp`, integer 8×8×16 instructions and
-`TensorOpMultiplicandCrosswise<8,64>` shared layouts. Each staged weight is reused
+`TensorOpMultiplicandCrosswise<8,K>` shared layouts. Each staged weight is reused
 across tile columns; each staged activation is reused across tile rows.
 
 The two-stage software pipeline prefetches the next packed weight/Q8 tile into
@@ -28,8 +29,13 @@ larger tile increases reuse and per-thread accumulator/register demand; whether
 that improves latency is a calibration result, not an assumption. Shared
 workspace is 8,960 bytes per block for the narrow two-stage tile and 17,920 for the wide tile.
 The single-stage variant consumes the tile, barriers before overwrite, then loads
-the next tile. Its shared workspace is 4,480 bytes for 32×32 and 16,640 for 64×64;
-the wide tile's shared transpose dominates its single-stage allocation. Calibration
+the next tile. Its shared workspace is 4,480 bytes for 32×32 and 35,328 for
+128×128; the latter's input stage dominates its shared allocation. The 128×128
+path uses full-tile specialization where M and N are divisible by 128, guarded
+loads for tails, vector FP32 scale loads, and one 64-bit Q8 activation load per
+eight bytes. Alternating packed-weight rows and Q8 columns reverse the order of
+adjacent shared-memory stores to avoid bank conflicts. The CTA grid visits input
+columns fastest to improve reuse of resident packed weights. Calibration
 compares this lower-storage serial schedule against next-tile prefetch; no speedup
 is assumed.
 The accumulator coordinates use CUTLASS 4.8.0's pinned m8n8k16 row-major lane
@@ -89,13 +95,21 @@ operator operand footprints from actual tensor sizes (including fused operands),
 exclude internal scratch, and are explicitly not measured DRAM traffic. Reference
 workspace/shared usage is unknown (`null`), not a claimed zero.
 
-Status (2026-10-04): the `13288e4` runtime compiled on `.30` and passed the
+Historical status (2026-10-04): the `13288e4` runtime compiled on `.30` and passed the
 existing 17-case direct RTX8000 CUDA backend runner with numerical references.
 The vectorized staging change removed reported register spills from all four
 candidates. At `M=5120, N=2048, K=17408`, the best 64×64 single-stage candidate
 measured 8.0559 ms against Prism's 7.5834 ms (1.06 times slower); the narrow
 32×32 variants remained 1.82–2.19 times slower. See the [kernel diagnosis](benchmarks/rtx8000-13288e4-kernel-diagnosis.md).
-The staged runtime has not been loaded by the endpoint, which is back on stock
-Bonsai. Direct full-model execution, logits, custom load VRAM, large-context
-performance and stability remain pending. No SpecKit or AMD implementation is
-included.
+On 2026-10-05 the revised 128×128 kernel passed direct RTX8000 correctness on
+both representative products and an odd M/N tail. In same-binary, direct
+operator comparisons without calibration, it took 5.494 ms versus Bonsai's
+6.242 ms for M=17408/N=2048/K=5120 (12.0% faster), and 5.556 ms versus
+6.307 ms for M=5120/N=2048/K=17408 (11.9% faster). The stock kernel log
+confirmed 167 Prism selections in each comparison. See the
+[measurement record](benchmarks/rtx8000-prefill-2026-10-05.md).
+
+The endpoint remains on stock Bonsai. These are operator results, not a
+large-context or full-model prefill result. Direct full-model execution, logits,
+custom load VRAM, large-context performance and stability remain pending.
+No SpecKit or AMD implementation is included.

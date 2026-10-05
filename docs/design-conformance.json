@@ -1,7 +1,7 @@
 {
   "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
   "design_version": "0.1, 2026-10-03",
-  "review_state": "RTX8000 runtime 13288e4 compiled and passed 17/17 direct CUDA backend cases. Measured custom decode and prefill shapes remain slower than Prism. Endpoint restored to stock Bonsai; direct full-model, load VRAM, logits, large-context and viability evidence remain outstanding.",
+  "review_state": "RTX8000 direct operators now beat stock Bonsai on measured shapes: native decode exceeds 5% at batches 1/2/4/8, and CUTLASS prefill exceeds 10% on two representative products. Endpoint remains stock Bonsai; full-model, large-context, VRAM, logits and stability evidence remain outstanding.",
   "requirements": [
     {
       "requirement": "Bonsai core and endpoint integration",
@@ -24,19 +24,19 @@
     {
       "requirement": "CUTLASS/CUDA fused ternary-to-tile prefill",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp. Four candidates compare32x32/64x64 tiles and1/2 shared stages; CUDA compilation and 17 direct RTX8000 graph cases passed. At M5120/N2048/K17408 the best candidate was 1.06x slower than Prism.",
+      "finding": "Pinned CUTLASS4.8.0 SM75 integer TensorOp. The tuned 128x128x128 eight-warp candidate preserves PQ2/Q8 arithmetic and passed direct correctness on two representative products plus an odd tail. Same-binary RTX8000 operator comparisons beat Bonsai by 12.0% and 11.9%; full-model prefill remains unmeasured.",
       "evidence": "engine/backends/cuda/prefill_cutlass/merlin-prefill-tile.cuh; runtime.lock.json"
     },
     {
       "requirement": "Independent tile/pipeline/prompt tuning",
-      "status": "READY_FOR_HARDWARE_TUNING",
-      "finding": "Four Turing tile/pipeline combinations registered; startup samples representative prompt widths. Hadamard transforms remain preserved upstream; transform-fusion comparison and hardware tuning remain experiments, with no claimed gain. Ampere follows owner sequence.",
+      "status": "MEASURED_ON_RTX8000_OPERATORS",
+      "finding": "Three original tile/pipeline combinations and one tuned 128x128x128 single-stage candidate remain registered. Direct RTX8000 tests show the tuned candidate more than 10% faster than Bonsai on two shapes. Hadamard transforms remain upstream; transform fusion and full-model tuning are unmeasured. RTX3090 follows the owner sequence.",
       "evidence": "engine/dispatch/merlin-dispatch-prefill.cuh"
     },
     {
       "requirement": "Native packed decode batches1/2/4/8",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Q8 packed add/sub decode is integrated for batches1/2/4/8. The direct RTX8000 graph runner accepted numerical results, but at M17408/K5120 the candidate was 2.59–5.91x slower than Prism across those batches.",
+      "finding": "Four-row Q8/DP4A decode passed 26/26 direct CPU-reference cases and beat stock Bonsai by more than 5% at batches 1/2/4/8 on three representative RTX8000 matrix shapes. Full-model token throughput remains unmeasured.",
       "evidence": "engine/backends/cuda/decode_ternary/merlin-decode.cuh"
     },
     {
@@ -66,7 +66,7 @@
     {
       "requirement": "Fastest correct candidate and unseen-shape reference",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Full-output finite/NMSE comparison and strict median improvement required; unprofiled/unsafe shapes keep Prism. The direct RTX8000 cases numerically accepted custom candidates but their measured medians were slower, so these shapes select Prism. Full-model verification remains pending.",
+      "finding": "Full-output finite/NMSE comparison and strict median improvement required; unprofiled/unsafe shapes keep Prism. Forced direct RTX8000 operator tests show faster custom decode and prefill candidates, but a calibrated profile selecting them in full-model inference remains unverified.",
       "evidence": "engine/dispatch/merlin-dispatch.cuh; engine/dispatch/merlin-dispatch-profile.h"
     },
     {
@@ -107,14 +107,14 @@
     },
     {
       "requirement": "Correctness/logits, stability and speed acceptance gates",
-      "status": "NOT_VERIFIED",
-      "finding": "Integrated CUDA build at 13288e4 and 17/17 direct backend cases passed. Custom logits, direct full-model inference, long context, batching/prefix, custom load VRAM, stability and improvement remain unverified. The measured custom graph shapes are slower than Prism.",
-      "evidence": "docs/benchmarks/rtx8000-13288e4-kernel-diagnosis.md"
+      "status": "PARTIAL_OPERATOR_ONLY",
+      "finding": "RTX8000 direct CPU-reference correctness passed for the optimized decode and prefill cases. Same-binary direct operator tests show decode above 5% and prefill above 10% versus Bonsai on measured shapes. Custom logits, full-model inference, long-context prefill, batching/prefix, load VRAM and stability remain unverified.",
+      "evidence": "docs/benchmarks/rtx8000-four-row-decode-2026-10-04.md; docs/benchmarks/rtx8000-prefill-2026-10-05.md"
     },
     {
       "requirement": "3090/P40 then R9700",
-      "status": "DEFERRED_BY_OWNER_SEQUENCE",
-      "finding": "RTX8000 first; later hardware intentionally not implemented/tested in current stage. P40 added and Ryzen excluded explicitly by owner.",
+      "status": "RTX8000_OPERATOR_GATE_MET",
+      "finding": "RTX8000 direct prefill operators exceeded the owner's 10% gate on both measured shapes. RTX3090 follows, then P40, with R9700 later; Ryzen is excluded.",
       "evidence": "README.md"
     },
     {
@@ -154,7 +154,7 @@
     "artifact_directory": "/home/oscar/merlin-engine-builds/dd4940e",
     "endpoint": "Existing ABI-compatible endpoint binary reused; no Go endpoint code changes"
   },
-  "current_validation": {
+  "historical_validation_at_13288e4": {
     "engine_revision": "13288e41c4e83d89061ddf16f5dbfd4610f65e47",
     "source_head": "4bbfd0e",
     "cuda_build": "PASS",
@@ -171,6 +171,19 @@
     "large_context_custom": "NOT RUN",
     "endpoint_binding": "RESTORED TO STOCK prism-adfffbe on 2026-10-04",
     "installed_current_runtime": false,
+    "test_policy": "Direct runs only until the owner changes this instruction; no SpecKit work until viable."
+  },
+  "latest_operator_validation": {
+    "date": "2026-10-05",
+    "hardware": "Quadro RTX 8000, SM75",
+    "prefill_correctness": "PASS: two representative products and one odd M/N tail with custom CUTLASS selected",
+    "prefill_M17408_N2048_K5120_us": {"custom": 5493.83, "bonsai": 6242.14, "gain_percent": 12.0},
+    "prefill_M5120_N2048_K17408_us": {"custom": 5555.73, "bonsai": 6307.43, "gain_percent": 11.9},
+    "baseline_selection": "Fresh unmatched profile, no calibration, 167 prism dispatches per shape",
+    "decode_evidence": "docs/benchmarks/rtx8000-four-row-decode-2026-10-04.md",
+    "prefill_evidence": "docs/benchmarks/rtx8000-prefill-2026-10-05.md",
+    "endpoint_binding": "STOCK BONSAI",
+    "full_model_and_large_context": "NOT RUN",
     "test_policy": "Direct runs only until the owner changes this instruction; no SpecKit work until viable."
   }
 }
