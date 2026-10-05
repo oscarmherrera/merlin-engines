@@ -215,16 +215,22 @@ static void merlin_launch_decode(ggml_backend_cuda_context & ctx,
                 merlin_pq2_decode<batch, false><<<blocks, threads, 0, ctx.stream()>>>(
                     weights, activations, output, src0->ne[1], src0->ne[0], activation_stride, fusion);
             }
-        } else {
-            const dim3 blocks((src0->ne[1] + 15) / 16);
-            merlin_pq2_decode_batched<batch, 4><<<blocks, threads, 0, ctx.stream()>>>(
-                weights, activations, output, src0->ne[1], src0->ne[0], activation_stride);
+            CUDA_CHECK(cudaGetLastError());
+            return;
         }
-    } else {
-        const dim3 blocks((src0->ne[1] + 15) / 16);
-        merlin_pq2_decode_batched<batch, 4><<<blocks, threads, 0, ctx.stream()>>>(
-            weights, activations, output, src0->ne[1], src0->ne[0], activation_stride);
     }
+    if constexpr (batch == 1 || batch == 4) {
+        if (ggml_cuda_info().devices[ctx.device].cc == 860) {
+            const dim3 blocks((src0->ne[1] + 7) / 8);
+            merlin_pq2_decode_batched<batch, 2><<<blocks, threads, 0, ctx.stream()>>>(
+                weights, activations, output, src0->ne[1], src0->ne[0], activation_stride);
+            CUDA_CHECK(cudaGetLastError());
+            return;
+        }
+    }
+    const dim3 blocks((src0->ne[1] + 15) / 16);
+    merlin_pq2_decode_batched<batch, 4><<<blocks, threads, 0, ctx.stream()>>>(
+        weights, activations, output, src0->ne[1], src0->ne[0], activation_stride);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -239,6 +245,8 @@ static bool merlin_decode_supported(ggml_backend_cuda_context & ctx,
         return false;
     }
     const int64_t n = src1->ne[1];
+    // On SM86, batch 2 lost 18-39% to Prism across the three measured decode shapes.
+    if (cc == 860 && n == 2) { return false; }
     if ((n != 1 && n != 2 && n != 4 && n != 8) || src0->ne[0] % QK_PQ2_0 ||
             src1->ne[0] != src0->ne[0] || dst->ne[0] != src0->ne[1] || dst->ne[1] != n ||
             src0->ne[1] > INT32_MAX || merlin_decode_overlaps(src0, dst) || merlin_decode_overlaps(src1, dst)) {

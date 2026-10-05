@@ -1,0 +1,37 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24126 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+Testing 2 devices
+
+Backend 1/2: CUDA0
+  Device description: NVIDIA GeForce RTX 3090
+  Device memory: 24126 MB (4535 MB free)
+
+  MUL_MAT(name=pq2_m67_n1_k256_f0_c1,type=f32,ne=[67,1,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n2_k256_f0_c1,type=f32,ne=[67,2,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,2,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n4_k256_f0_c1,type=f32,ne=[67,4,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,4,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n8_k256_f0_c1,type=f32,ne=[67,8,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,8,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n1_k256_f2_c1,type=f32,ne=[67,1,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n1_k256_f513_c1,type=f32,ne=[67,1,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n1_k256_f519_c1,type=f32,ne=[67,1,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n1_k256_f769_c1,type=f32,ne=[67,1,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n1_k256_f775_c1,type=f32,ne=[67,1,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n1_k256_f1025_c1,type=f32,ne=[67,1,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m67_n1_k256_f1031_c1,type=f32,ne=[67,1,1,1],op_params=[],sources=pq2_0[256,67,1,1],f32[256,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m17408_n1_k5120_f0_c0,type=f32,ne=[17408,1,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m17408_n2_k5120_f0_c0,type=f32,ne=[17408,2,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,2,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m17408_n4_k5120_f0_c0,type=f32,ne=[17408,4,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,4,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m17408_n8_k5120_f0_c0,type=f32,ne=[17408,8,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,8,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n1_k17408_f0_c0,type=f32,ne=[5120,1,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n2_k17408_f0_c0,type=f32,ne=[5120,2,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,2,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n4_k17408_f0_c0,type=f32,ne=[5120,4,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,4,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n8_k17408_f0_c0,type=f32,ne=[5120,8,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,8,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n1_k5120_f0_c0,type=f32,ne=[5120,1,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,1,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n2_k5120_f0_c0,type=f32,ne=[5120,2,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,2,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n4_k5120_f0_c0,type=f32,ne=[5120,4,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,4,1,1]): [1;32mOK[0m
+  MUL_MAT(name=pq2_m5120_n8_k5120_f0_c0,type=f32,ne=[5120,8,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,8,1,1]): [1;32mOK[0m
+  23/23 tests passed
+  Backend CUDA0: [1;32mOK[0m
+Backend 2/2: CPU
+  Skipping
+2/2 backends passed
+[1;32mOK[0m

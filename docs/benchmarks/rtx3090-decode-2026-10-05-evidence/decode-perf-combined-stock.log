@@ -1,0 +1,37 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24126 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24126 MiB
+ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+Testing 2 devices
+
+Backend 1/2: CUDA0
+  Device description: NVIDIA GeForce RTX 3090
+  Device memory: 24126 MB (4535 MB free)
+
+  MUL_MAT(name=pq2_m17408_n1_k5120_f0_c0,type=f32,ne=[17408,1,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,1,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+               26028 runs -    38.81 us/run -    23208 kB/run - [1;34m 570.28 GB/s[0m
+  MUL_MAT(name=pq2_m17408_n2_k5120_f0_c0,type=f32,ne=[17408,2,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,2,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+               25938 runs -    39.19 us/run -    23296 kB/run - [1;34m 566.89 GB/s[0m
+  MUL_MAT(name=pq2_m17408_n4_k5120_f0_c0,type=f32,ne=[17408,4,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,4,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+               17160 runs -    61.78 us/run -    23472 kB/run - [1;34m 362.32 GB/s[0m
+  MUL_MAT(name=pq2_m17408_n8_k5120_f0_c0,type=f32,ne=[17408,8,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,8,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+               11272 runs -    96.75 us/run -    23824 kB/run - [1;34m 234.83 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n1_k17408_f0_c0,type=f32,ne=[5120,1,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,1,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+               28920 runs -    35.38 us/run -    23208 kB/run - [1;34m 625.59 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n2_k17408_f0_c0,type=f32,ne=[5120,2,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,2,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+               27379 runs -    36.60 us/run -    23296 kB/run - [1;34m 607.00 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n4_k17408_f0_c0,type=f32,ne=[5120,4,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,4,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+               12870 runs -    83.58 us/run -    23472 kB/run - [1;34m 267.81 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n8_k17408_f0_c0,type=f32,ne=[5120,8,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,8,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+                9863 runs -   108.21 us/run -    23824 kB/run - [1;34m 209.97 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n1_k5120_f0_c0,type=f32,ne=[5120,1,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,1,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+                  73590 runs -    14.38 us/run -     6840 kB/run - [1;34m 453.49 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n2_k5120_f0_c0,type=f32,ne=[5120,2,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,2,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+                  68292 runs -    14.98 us/run -     6880 kB/run - [1;34m 438.10 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n4_k5120_f0_c0,type=f32,ne=[5120,4,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,4,1,1]): ggml_backend_cuda_graph_compute: CUDA graph warmup complete
+                  48220 runs -    22.49 us/run -     6960 kB/run - [1;34m 295.11 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n8_k5120_f0_c0,type=f32,ne=[5120,8,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,8,1,1]):                   32991 runs -    34.51 us/run -     7120 kB/run - [1;34m 196.78 GB/s[0m
+  Backend CUDA0: [1;32mOK[0m
+Backend 2/2: CPU
+  Skipping
+2/2 backends passed
+[1;32mOK[0m
