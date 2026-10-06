@@ -18,8 +18,8 @@ def apply_attention(source):
     text = path.read_text()
     before = ('    if (use_gqa_opt && gqa_ratio > 4) {\n'
               '        ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);\n')
-    after = ('    // RTX8000 GQA 6: two heads per tile cut 225K Q8 attention time by 26%.\n'
-             '    if (cc == GGML_CUDA_CC_TURING && use_gqa_opt && gqa_ratio == 6 && DKQ == 256 && DV == 256 && Q->ne[1] > 8) {\n'
+    after = ('    // GQA 6: two heads per tile cut 225K Q8 attention by 26% on SM75 and 20% on SM86.\n'
+             '    if ((cc == GGML_CUDA_CC_TURING || cc == 860) && use_gqa_opt && gqa_ratio == 6 && DKQ == 256 && DV == 256 && Q->ne[1] > 8) {\n'
              '        ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 2>(ctx, dst);\n'
              '        return;\n'
              '    }\n\n' + before)
@@ -70,7 +70,7 @@ def main():
     apply_workload(args.source, root)
     apply_graph(args.source, root)
     configure_runtime(args.source, root, lock)
-    print('Applied Merlin packed decode, tiled prefill, Turing attention and runtime logging.', flush=True)
+    print('Applied Merlin packed decode, tiled prefill, SM75/SM86 attention and runtime logging.', flush=True)
 
 
 if __name__ == '__main__':
