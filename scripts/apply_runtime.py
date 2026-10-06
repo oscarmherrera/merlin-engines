@@ -68,6 +68,8 @@ def main():
     apply_prefill(args.source, root)
     apply_mmq(args.source)
     apply_attention(args.source)
+    subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '-p1', '-d', str(args.source),
+                    '-i', str(root / 'engine/backends/cuda/attention/grouped-q8-vector.patch')], check=True)
     apply_calibration(args.source)
     apply_workload(args.source, root)
     apply_graph(args.source, root)
