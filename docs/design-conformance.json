@@ -1,7 +1,7 @@
 {
   "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
   "design_version": "0.1, 2026-10-03",
-  "review_state": "RTX8000 direct operators now beat stock Bonsai on measured shapes: native decode exceeds 5% at batches 1/2/4/8, and CUTLASS prefill exceeds 10% on two representative products. Endpoint remains stock Bonsai; full-model, large-context, VRAM, logits and stability evidence remain outstanding.",
+  "review_state": "RTX8000 matched direct 225K prompt plus 128-token compute took 18.4% less time than stock Bonsai; depth-only decode took 3.3% less. RTX3090 integrated attention and MMQ operators are 19.4% and about 4.5% faster, but full-model 3090 evidence is blocked by the resident stock endpoint's VRAM use. Production endpoints remain stock; endpoint TTFT, logits, and stability evidence remain outstanding.",
   "requirements": [
     {
       "requirement": "Bonsai core and endpoint integration",
@@ -107,15 +107,15 @@
     },
     {
       "requirement": "Correctness/logits, stability and speed acceptance gates",
-      "status": "PARTIAL_OPERATOR_ONLY",
-      "finding": "RTX8000 direct CPU-reference correctness passed for the optimized decode and prefill cases. Same-binary direct operator tests show decode above 5% and prefill above 10% versus Bonsai on measured shapes. Custom logits, full-model inference, long-context prefill, batching/prefix, load VRAM and stability remain unverified.",
-      "evidence": "docs/benchmarks/rtx8000-four-row-decode-2026-10-04.md; docs/benchmarks/rtx8000-prefill-2026-10-05.md"
+      "status": "PARTIAL_DIRECT_MODEL",
+      "finding": "RTX8000 direct CPU-reference correctness passed for optimized decode, prefill and attention cases. Matched full-model compute at 225K plus 128 tokens took 18.4% less time; measured depth-only decode took 3.3% less. The benchmark does not compare generated text or measure endpoint TTFT. Long-run stability, batching/prefix behavior, isolated weight VRAM and 3090 full-model speed remain unverified.",
+      "evidence": "docs/benchmarks/rtx8000-four-row-decode-2026-10-04.md; docs/benchmarks/rtx8000-prefill-2026-10-05.md; docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md"
     },
     {
       "requirement": "3090/P40 then R9700",
-      "status": "RTX8000_OPERATOR_GATE_MET",
-      "finding": "RTX8000 direct prefill operators exceeded the owner's 10% gate on both measured shapes. RTX3090 follows, then P40, with R9700 later; Ryzen is excluded.",
-      "evidence": "README.md"
+      "status": "RTX8000_DIRECT_MODEL_3090_OPERATOR_ONLY",
+      "finding": "RTX8000 direct long-context compute exceeds the 10% goal. RTX3090 integrated attention and MMQ operators are faster but a matched full-model run needs a test window to free VRAM. P40 follows the 3090 goal, then R9700; Ryzen is excluded.",
+      "evidence": "docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md; docs/benchmarks/rtx3090-integrated-2026-10-06.md"
     },
     {
       "requirement": "SpecKit formalization",
@@ -184,6 +184,23 @@
     "prefill_evidence": "docs/benchmarks/rtx8000-prefill-2026-10-05.md",
     "endpoint_binding": "STOCK BONSAI",
     "full_model_and_large_context": "NOT RUN",
+    "test_policy": "Direct runs only until the owner changes this instruction; no SpecKit work until viable."
+  },
+  "latest_direct_model_validation": {
+    "date": "2026-10-06",
+    "hardware": "Quadro RTX 8000, SM75",
+    "prompt_tokens": 225000,
+    "generated_tokens": 128,
+    "stock_total_seconds": 722.849,
+    "custom_total_seconds": 589.975,
+    "total_time_reduction_percent": 18.4,
+    "stock_depth_decode_seconds": 10.390,
+    "custom_depth_decode_seconds": 10.043,
+    "depth_decode_time_reduction_percent": 3.3,
+    "evidence": "docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md",
+    "endpoint_binding": "STOCK BONSAI",
+    "endpoint_ttft": "NOT MEASURED",
+    "generated_content_correctness": "NOT MEASURED",
     "test_policy": "Direct runs only until the owner changes this instruction; no SpecKit work until viable."
   }
 }
