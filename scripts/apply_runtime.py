@@ -13,6 +13,21 @@ from apply_workload import apply as apply_workload
 from apply_graph import apply as apply_graph
 
 
+def apply_attention(source):
+    path = source / 'ggml/src/ggml-cuda/fattn.cu'
+    text = path.read_text()
+    before = ('    if (use_gqa_opt && gqa_ratio > 4) {\n'
+              '        ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);\n')
+    after = ('    // RTX8000 GQA 6: two heads per tile cut 225K Q8 attention time by 26%.\n'
+             '    if (cc == GGML_CUDA_CC_TURING && use_gqa_opt && gqa_ratio == 6 && DKQ == 256 && DV == 256 && Q->ne[1] > 8) {\n'
+             '        ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 2>(ctx, dst);\n'
+             '        return;\n'
+             '    }\n\n' + before)
+    if text.count(before) != 1:
+        raise SystemExit('Pinned attention dispatch anchor changed')
+    path.write_text(text.replace(before, after))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
@@ -50,11 +65,12 @@ def main():
         shutil.copyfile(header, path.parent / header.name)
     apply_decode(args.source, root)
     apply_prefill(args.source, root)
+    apply_attention(args.source)
     apply_calibration(args.source)
     apply_workload(args.source, root)
     apply_graph(args.source, root)
     configure_runtime(args.source, root, lock)
-    print('Applied Merlin packed decode, tiled prefill and runtime logging.', flush=True)
+    print('Applied Merlin packed decode, tiled prefill, Turing attention and runtime logging.', flush=True)
 
 
 if __name__ == '__main__':
