@@ -11,6 +11,7 @@ from configure_runtime import apply as configure_runtime
 from apply_calibration import apply as apply_calibration
 from apply_workload import apply as apply_workload
 from apply_graph import apply as apply_graph
+from apply_mmq import apply as apply_mmq
 
 
 def apply_attention(source):
@@ -65,12 +66,13 @@ def main():
         shutil.copyfile(header, path.parent / header.name)
     apply_decode(args.source, root)
     apply_prefill(args.source, root)
+    apply_mmq(args.source)
     apply_attention(args.source)
     apply_calibration(args.source)
     apply_workload(args.source, root)
     apply_graph(args.source, root)
     configure_runtime(args.source, root, lock)
-    print('Applied Merlin packed decode, tiled prefill, SM75/SM86 attention and runtime logging.', flush=True)
+    print('Applied Merlin packed decode, tiled prefill, SM86 MMQ, SM75/SM86 attention and runtime logging.', flush=True)
 
 
 if __name__ == '__main__':
