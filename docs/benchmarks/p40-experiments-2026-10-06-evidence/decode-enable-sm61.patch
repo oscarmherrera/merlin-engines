@@ -1,0 +1,20 @@
+diff --git a/engine/backends/cuda/decode_ternary/merlin-decode.cuh b/engine/backends/cuda/decode_ternary/merlin-decode.cuh
+index 63665d7..c43ed3a 100644
+--- a/engine/backends/cuda/decode_ternary/merlin-decode.cuh
++++ b/engine/backends/cuda/decode_ternary/merlin-decode.cuh
+@@ -238,13 +238,14 @@ static bool merlin_decode_supported(ggml_backend_cuda_context & ctx,
+         const ggml_tensor * src0, const ggml_tensor * src1, const ggml_tensor * ids,
+         ggml_tensor * dst, const ggml_cuda_mm_fusion_args_host * fusion) {
+     const int cc = ggml_cuda_info().devices[ctx.device].cc;
+-    if ((cc != GGML_CUDA_CC_TURING && cc != 860) || ggml_cuda_highest_compiled_arch(cc) < cc || ids ||
++    if ((cc != 610 && cc != GGML_CUDA_CC_TURING && cc != 860) || ggml_cuda_highest_compiled_arch(cc) < cc || ids ||
+             src0->type != GGML_TYPE_PQ2_0 || src1->type != GGML_TYPE_F32 || dst->type != GGML_TYPE_F32 ||
+             !merlin_decode_matrix(src0, ctx.device) || !merlin_decode_matrix(src1, ctx.device) ||
+             !merlin_decode_matrix(dst, ctx.device)) {
+         return false;
+     }
+     const int64_t n = src1->ne[1];
++    if (cc == 610 && n > 2) { return false; }
+     // On SM86, batch 2 lost 18-39% to Prism across the three measured decode shapes.
+     if (cc == 860 && n == 2) { return false; }
+     if ((n != 1 && n != 2 && n != 4 && n != 8) || src0->ne[0] % QK_PQ2_0 ||

@@ -1,7 +1,7 @@
 {
   "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
   "design_version": "0.1, 2026-10-03",
-  "review_state": "RTX8000 matched direct 225K prompt plus 128-token compute took 18.4% less time than stock Bonsai; the grouped Q8 attention engine then cut measured 225K depth-only decode time by 28.3%. RTX3090 clean custom runtime took 13.1% less time for a matched 225K prompt plus 128 tokens and 22.4% less timed decode time at 225K depth. Production endpoints remain stock; endpoint TTFT, generated text comparison, and stability evidence remain outstanding.",
+  "review_state": "RTX8000 matched direct 225K prompt plus 128-token compute took 18.4% less time than stock Bonsai; the grouped Q8 attention engine then cut measured 225K depth-only decode time by 28.3%. RTX3090 clean custom runtime took 13.1% less time for a matched 225K prompt plus 128 tokens and 22.4% less timed decode time at 225K depth. Production endpoints remain stock; endpoint TTFT, generated text comparison, and stability evidence remain outstanding. P40 approved trials now show 11.4% less 30K prompt-plus-generation compute with a Bonsai MMQ tile change, but its DP4A decode port does not improve full-model time; the 20% P40 goal remains unmet.",
   "requirements": [
     {
       "requirement": "Bonsai core and endpoint integration",
@@ -113,9 +113,9 @@
     },
     {
       "requirement": "3090/P40 then R9700",
-      "status": "RTX8000_AND_3090_DIRECT_MODEL_225K",
-      "finding": "RTX8000 direct long-context compute exceeds the 10% goal and grouped decode is 28.3% faster at 225K. RTX3090 matched direct 225K prompt-plus-generation compute is 13.1% faster and depth decode is 22.4% faster. The stock 3090 endpoint was temporarily stopped for the direct pair and restored unchanged. P40 follows the 3090 goal, then R9700; Ryzen is excluded.",
-      "evidence": "docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md; docs/benchmarks/rtx3090-integrated-2026-10-06.md; docs/benchmarks/grouped-q8-vector-attention-2026-10-06.md; docs/benchmarks/rtx3090-matched-225k-128-2026-10-06.md"
+      "status": "P40_PARTIAL_DIRECT_MODEL_30K",
+      "finding": "RTX8000 direct 225K prompt-plus-generation compute improved 18.4% and grouped decode 28.3%; RTX3090 improved 13.1% and 22.4%. P40 I128/J64 PQ2 MMQ reduced matrix time 20.1–21.9% and matched 30K prompt-plus-generation time 11.4%. Its native decode port passed correctness but missed performance targets and is not enabled. P40 work remains unfinished before R9700; Ryzen is excluded. All production endpoints remain stock.",
+      "evidence": "docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md; docs/benchmarks/rtx3090-integrated-2026-10-06.md; docs/benchmarks/grouped-q8-vector-attention-2026-10-06.md; docs/benchmarks/rtx3090-matched-225k-128-2026-10-06.md; docs/benchmarks/p40-experiments-2026-10-06.md"
     },
     {
       "requirement": "SpecKit formalization",

@@ -14,31 +14,29 @@ phase. The streaming proposal is retained in `docs/` as reference only.
 
 ## Status
 
-The standalone repository is at `4bbfd0e`; the parent `merlin-engines` branch
-contains that tree locally at `b7958710d`. The standalone commit is pushed. The
-parent push is blocked by pre-existing main-repository change-gate failures; its
-gate has not been bypassed. The RTX8000 `sm_75` runtime built from `13288e4` on
-`.30` and is staged on the RTX8000, but is not installed in the endpoint.
+Direct tests now show improvements over stock Bonsai on the RTX8000 and
+RTX3090. P40 tuning is in progress; R9700 work has not started.
 
-The existing 17-case direct CUDA backend runner passed 17/17 with numerical
-references and execution receipts. At the measured `M=17408, K=5120` decode
-shape, Q8 custom batches 1/2/4/8 were 2.59–5.91 times slower than Prism; the
-Q8 change improved the earlier custom F32 path by 15–19%. At the measured
-`M=5120, N=2048, K=17408` prefill shape, the best CUTLASS variant was 1.06
-times slower than Prism. These are kernel-shape measurements, not full-model
-speed or large-context results. See the [kernel diagnosis](docs/benchmarks/rtx8000-13288e4-kernel-diagnosis.md),
-[decode](docs/decode-kernel.md), [prefill](docs/prefill-kernel.md),
-[measured dispatch](docs/measured-dispatch.md), [runtime logging](docs/profiling.md),
-and [requirement checklist](docs/design-conformance.json). No custom speedup
-or viable engine has been demonstrated.
+| Device | Prompt + 128-token time reduction | Depth-only decode time reduction |
+| --- | ---: | ---: |
+| RTX8000, 225K | 18.4% | 28.3% with grouped attention |
+| RTX3090, 225K | 13.1% | 22.4% with grouped attention |
+| P40, 30K | 11.4% with the retained MMQ tile | No demonstrated gain; native trial rejected |
 
-The RTX8000 endpoint was restored to its original Bonsai/Prism binding
-`prism-adfffbe` on 2026-10-04. Its model is ready with a 262,144-token configured
-context. The 18,430 MiB device usage measured immediately after restoration
-is total occupied VRAM, not a separately measured weight allocation. From now
-until the owner changes the instruction, engine experiments use **direct
-runs of the staged runtime**, not the endpoint. A direct full-model custom run
-has not yet been completed. No 3090, P40 or R9700 custom run has begun.
+These are direct model measurements, one run per variant, not endpoint TTFT
+or generated-text comparisons. The RTX8000 whole-run measurement predates
+its grouped decode change. Production endpoints remain on stock Bonsai.
+The current instruction is to use direct runs of isolated staged runtimes.
+
+See the [RTX8000 result](docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md),
+[grouped decode result](docs/benchmarks/grouped-q8-vector-attention-2026-10-06.md),
+[RTX3090 result](docs/benchmarks/rtx3090-matched-225k-128-2026-10-06.md),
+[P40 experiments](docs/benchmarks/p40-experiments-2026-10-06.md), and
+[design checklist](docs/design-conformance.json). P40 prefill matrices improved
+20.1–21.9%, but the target of 20% less whole-phase prefill and decode time
+has not been reached. The builder accepts CUDA architectures 61, 75 and 86;
+SM61 retains stock decode and uses the tuned Bonsai MMQ prefill path.
+
 The owner has deferred SpecKit work until a viable implementation functions.
 The owner has also waived the change gate in this subtree repository during
 the experimental phase. Correctness tests and performance validation still
@@ -74,7 +72,7 @@ must improve measured behavior beyond those implementations.
    tokens; see the [initial baseline](docs/benchmarks/rtx8000-2026-10-03/README.md)
    and [large-context results](docs/benchmarks/rtx8000-2026-10-03-stock-large-context/baseline-comparison.json).
 2. The Q8 packed decode, CUTLASS tiled prefill and measured dispatch are built;
-   direct graph cases pass, but the measured custom shapes lose to Prism.
+   direct graph cases and matched model measurements are documented above.
 3. Use direct full-model RTX8000 runs against the staged runtime. Record VRAM
    immediately after loading, before inference; then prove custom GPU execution,
    compare outputs/logits and matched speed, and exercise large contexts.

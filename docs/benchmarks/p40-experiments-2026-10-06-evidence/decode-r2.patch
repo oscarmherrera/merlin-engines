@@ -1,0 +1,14 @@
+--- /tmp/merlin-p40-stock-src/ggml/src/ggml-cuda/merlin-decode.cuh.pre-p40-r2	2026-10-06 15:39:12.438164750 +0000
++++ /tmp/merlin-p40-stock-src/ggml/src/ggml-cuda/merlin-decode.cuh	2026-10-06 15:39:12.438245539 +0000
+@@ -219,8 +219,9 @@
+             return;
+         }
+     }
+-    if constexpr (batch == 1 || batch == 4) {
+-        if (ggml_cuda_info().devices[ctx.device].cc == 860) {
++    if constexpr (batch == 1 || batch == 2 || batch == 4) {
++        const int cc = ggml_cuda_info().devices[ctx.device].cc;
++        if ((cc == 860 && batch != 2) || (cc == 610 && batch <= 2)) {
+             const dim3 blocks((src0->ne[1] + 7) / 8);
+             merlin_pq2_decode_batched<batch, 2><<<blocks, threads, 0, ctx.stream()>>>(
+                 weights, activations, output, src0->ne[1], src0->ne[0], activation_stride);

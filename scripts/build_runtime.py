@@ -29,7 +29,7 @@ def main():
     parser.add_argument('--host-cxx', default='/usr/bin/g++-13')
     parser.add_argument('--host-cc', default='/usr/bin/gcc-13')
     parser.add_argument('--jobs', type=int, default=6)
-    parser.add_argument('--cuda-arch', choices=('75', '86'), default='75')
+    parser.add_argument('--cuda-arch', choices=('61', '75', '86'), default='75')
     parser.add_argument('--source-cache', type=Path, help='Existing local Git checkout of the pinned runtime')
     parser.add_argument('--scratch', type=Path, help='New directory for temporary source and objects')
     parser.add_argument('--reuse-scratch', action='store_true',

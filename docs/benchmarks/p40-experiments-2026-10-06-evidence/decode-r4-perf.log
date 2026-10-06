@@ -1,0 +1,25 @@
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 22905 MiB):
+  Device 0: Tesla P40, compute capability 6.1, VMM: yes, VRAM: 22905 MiB
+ggml_cuda_graph_set_enabled: disabling CUDA graphs due to GPU architecture
+Testing 2 devices
+
+Backend 1/2: CUDA0
+  Device description: Tesla P40
+  Device memory: 22905 MB (11485 MB free)
+
+  MUL_MAT(name=pq2_m17408_n1_k5120_f0_c0,type=f32,ne=[17408,1,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,1,1,1]): ggml_cuda_graph_set_enabled: disabling CUDA graphs due to GPU architecture
+                8676 runs -   125.90 us/run -    23208 kB/run - [1;34m 175.80 GB/s[0m
+  MUL_MAT(name=pq2_m17408_n2_k5120_f0_c0,type=f32,ne=[17408,2,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,2,1,1]):                 7205 runs -   161.24 us/run -    23296 kB/run - [1;34m 137.79 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n1_k17408_f0_c0,type=f32,ne=[5120,1,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,1,1,1]):                 8676 runs -   138.23 us/run -    23208 kB/run - [1;34m 160.12 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n2_k17408_f0_c0,type=f32,ne=[5120,2,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,2,1,1]):                 7205 runs -   158.02 us/run -    23296 kB/run - [1;34m 140.59 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n1_k5120_f0_c0,type=f32,ne=[5120,1,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,1,1,1]):                   24530 runs -    47.36 us/run -     6840 kB/run - [1;34m 137.73 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n2_k5120_f0_c0,type=f32,ne=[5120,2,1,1],op_params=[],sources=pq2_0[5120,5120,1,1],f32[5120,2,1,1]): ggml_cuda_graph_set_enabled: disabling CUDA graphs due to GPU architecture
+                  19512 runs -    53.31 us/run -     6880 kB/run - [1;34m 123.08 GB/s[0m
+  MUL_MAT(name=pq2_m17408_n1_k5120_f513_c0,type=f32,ne=[17408,1,1,1],op_params=[],sources=pq2_0[5120,17408,1,1],f32[5120,1,1,1]): ggml_cuda_graph_set_enabled: disabling CUDA graphs due to GPU architecture
+            417639 runs -     2.44 us/run -      204 kB/run - [1;34m  81.93 GB/s[0m
+  MUL_MAT(name=pq2_m5120_n1_k17408_f2_c0,type=f32,ne=[5120,1,1,1],op_params=[],sources=pq2_0[17408,5120,1,1],f32[17408,1,1,1]):               458640 runs -     2.22 us/run -       60 kB/run - [1;34m  27.04 GB/s[0m
+  Backend CUDA0: [1;32mOK[0m
+Backend 2/2: CPU
+  Skipping
+2/2 backends passed
+[1;32mOK[0m
