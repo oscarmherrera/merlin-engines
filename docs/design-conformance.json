@@ -1,7 +1,7 @@
 {
   "design": "docs/merlin_bonsai_hybrid_resident_engine.docx",
   "design_version": "0.1, 2026-10-03",
-  "review_state": "RTX8000 matched direct 225K prompt plus 128-token compute took 18.4% less time than stock Bonsai; the grouped Q8 attention engine then cut measured 225K depth-only decode time by 28.3%. RTX3090 integrated prefill attention and MMQ operators are 19.4% and about 4.5% faster, and grouped decode attention is 32.8% faster, but full-model 3090 evidence is blocked by the resident stock endpoint's VRAM use. Production endpoints remain stock; endpoint TTFT, generated text comparison, and stability evidence remain outstanding.",
+  "review_state": "RTX8000 matched direct 225K prompt plus 128-token compute took 18.4% less time than stock Bonsai; the grouped Q8 attention engine then cut measured 225K depth-only decode time by 28.3%. RTX3090 clean custom runtime took 13.1% less time for a matched 225K prompt plus 128 tokens and 22.4% less timed decode time at 225K depth. Production endpoints remain stock; endpoint TTFT, generated text comparison, and stability evidence remain outstanding.",
   "requirements": [
     {
       "requirement": "Bonsai core and endpoint integration",
@@ -36,7 +36,7 @@
     {
       "requirement": "Native packed decode batches1/2/4/8",
       "status": "IMPLEMENTED_IN_SOURCE",
-      "finding": "Four-row Q8/DP4A decode passed 26/26 direct CPU-reference cases and beat stock Bonsai by more than 5% at batches 1/2/4/8 on three representative RTX8000 matrix shapes. Full-model token throughput remains unmeasured.",
+      "finding": "Four-row Q8/DP4A decode passed 26/26 direct CPU-reference cases and beat stock Bonsai by more than 5% at batches 1/2/4/8 on three representative RTX8000 matrix shapes. Matched full-model 225K depth decode improved 28.3% on RTX8000 and 22.4% on RTX3090 with the combined grouped-attention engine; the matrix kernel's separate share of those gains is unmeasured.",
       "evidence": "engine/backends/cuda/decode_ternary/merlin-decode.cuh"
     },
     {
@@ -90,7 +90,7 @@
     {
       "requirement": "Profiler latency/bytes/workspace/selection/end-to-end",
       "status": "IMPLEMENTED_WITH_MEASUREMENT_LIMITS",
-      "finding": "Operator/calibration timing, sampled actual graph completion, route and actual workload, used/reserved scratch, shared-per-block storage and endpoint timing are instrumented. Direct graph-case timings were collected. Logical operand byte footprints are estimates; physical DRAM transactions and direct full-model throughput are not measured.",
+      "finding": "Operator/calibration timing, sampled actual graph completion, route and actual workload, used/reserved scratch, shared-per-block storage and endpoint timing are instrumented. Direct graph-case timings and matched 225K full-model throughput were collected on RTX8000 and RTX3090. Logical operand byte footprints are estimates; physical DRAM transactions remain unmeasured.",
       "evidence": "engine/telemetry/merlin-profile.cuh; engine/telemetry/merlin-kernel-log.cuh; benchmarks/single_request.py"
     },
     {
@@ -108,14 +108,14 @@
     {
       "requirement": "Correctness/logits, stability and speed acceptance gates",
       "status": "PARTIAL_DIRECT_MODEL",
-      "finding": "RTX8000 direct CPU-reference correctness passed for optimized decode, prefill and attention cases, including grouped Q8 attention at 225K on clean SM75 and SM86 libraries. Matched full-model compute at 225K plus 128 tokens took 18.4% less time; the new grouped path reduced measured 225K depth-only decode time by 28.3%. The benchmark does not compare generated text or measure endpoint TTFT. Long-run stability, batching/prefix behavior, isolated weight VRAM and 3090 full-model speed remain unverified.",
-      "evidence": "docs/benchmarks/rtx8000-four-row-decode-2026-10-04.md; docs/benchmarks/rtx8000-prefill-2026-10-05.md; docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md; docs/benchmarks/grouped-q8-vector-attention-2026-10-06.md"
+      "finding": "Direct CPU-reference correctness passed for optimized decode, prefill and attention cases, including grouped Q8 attention at 225K on clean SM75 and SM86 libraries. Matched 225K prompt-plus-generation compute took 18.4% less time on RTX8000 and 13.1% less on RTX3090; depth-only decode took 28.3% and 22.4% less, respectively, with the grouped engine. The benchmarks do not compare generated text or measure endpoint TTFT. Long-run stability, batching/prefix behavior and isolated weight VRAM remain unverified.",
+      "evidence": "docs/benchmarks/rtx8000-four-row-decode-2026-10-04.md; docs/benchmarks/rtx8000-prefill-2026-10-05.md; docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md; docs/benchmarks/grouped-q8-vector-attention-2026-10-06.md; docs/benchmarks/rtx3090-matched-225k-128-2026-10-06.md"
     },
     {
       "requirement": "3090/P40 then R9700",
-      "status": "RTX8000_DIRECT_MODEL_3090_OPERATOR_ONLY",
-      "finding": "RTX8000 direct long-context compute exceeds the 10% goal and grouped decode is 28.3% faster at 225K. RTX3090 integrated attention, MMQ and grouped decode-attention operators are faster but a matched full-model run needs a test window to free VRAM. P40 follows the 3090 goal, then R9700; Ryzen is excluded.",
-      "evidence": "docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md; docs/benchmarks/rtx3090-integrated-2026-10-06.md; docs/benchmarks/grouped-q8-vector-attention-2026-10-06.md"
+      "status": "RTX8000_AND_3090_DIRECT_MODEL_225K",
+      "finding": "RTX8000 direct long-context compute exceeds the 10% goal and grouped decode is 28.3% faster at 225K. RTX3090 matched direct 225K prompt-plus-generation compute is 13.1% faster and depth decode is 22.4% faster. The stock 3090 endpoint was temporarily stopped for the direct pair and restored unchanged. P40 follows the 3090 goal, then R9700; Ryzen is excluded.",
+      "evidence": "docs/benchmarks/rtx8000-matched-225k-128-2026-10-06.md; docs/benchmarks/rtx3090-integrated-2026-10-06.md; docs/benchmarks/grouped-q8-vector-attention-2026-10-06.md; docs/benchmarks/rtx3090-matched-225k-128-2026-10-06.md"
     },
     {
       "requirement": "SpecKit formalization",
@@ -216,9 +216,26 @@
     "full_model_library": "ISOLATED SCRATCH SOURCE MATCHING COMMITTED PATCH",
     "clean_sm75_gpu_operator_and_reference": "PASS: 225K Q8 attention 2.112 ms; CPU reference 1/1",
     "clean_sm86_gpu_operator_and_reference": "PASS: 225K Q8 attention 1.378 ms; CPU reference 1/1",
-    "rtx3090_full_model": "NOT RUN: resident stock endpoint leaves about 4.8 GiB free",
+    "rtx3090_full_model": "PASS: matched 225K prompt plus 128 tokens took 13.1% less time; timed depth decode took 22.4% less",
     "evidence": "docs/benchmarks/grouped-q8-vector-attention-2026-10-06.md",
     "endpoint_binding": "STOCK BONSAI",
+    "endpoint_ttft": "NOT MEASURED",
+    "generated_content_correctness": "NOT MEASURED"
+  },
+  "latest_3090_direct_validation": {
+    "date": "2026-10-06",
+    "engine_revision": "7d47aaa",
+    "hardware": "GeForce RTX 3090, SM86",
+    "prompt_tokens": 225000,
+    "generated_tokens": 128,
+    "stock_prompt_generation_seconds": 340.215136,
+    "custom_prompt_generation_seconds": 295.605181,
+    "prompt_generation_time_reduction_percent": 13.112,
+    "stock_depth_decode_seconds": 6.238721,
+    "custom_depth_decode_seconds": 4.842042,
+    "depth_decode_time_reduction_percent": 22.387,
+    "evidence": "docs/benchmarks/rtx3090-matched-225k-128-2026-10-06.md",
+    "endpoint_binding_after_test": "STOCK BONSAI prism-adfffbe",
     "endpoint_ttft": "NOT MEASURED",
     "generated_content_correctness": "NOT MEASURED"
   }
