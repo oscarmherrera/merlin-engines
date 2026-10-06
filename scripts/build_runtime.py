@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build and stage the RTX8000 custom runtime; never load or install it."""
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -111,7 +112,12 @@ def main():
             if path.is_symlink():
                 target.symlink_to(os.readlink(path))
             else:
-                os.link(path, target)
+                try:
+                    os.link(path, target)
+                except OSError as error:
+                    if error.errno != errno.EXDEV:
+                        raise
+                    shutil.copy2(path, target)
     shutil.copyfile(source / 'LICENSE', bundle / 'LICENSE.llama.cpp')
     shutil.copyfile(cutlass / 'LICENSE.txt', bundle / 'LICENSE.cutlass')
     for name in ('calibrate_runtime.py', 'calibration_shapes.py'):
