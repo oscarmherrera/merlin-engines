@@ -123,3 +123,28 @@ from writing the activation quantization in the transform's epilogue, and
 around 7% from the scalar attention path, each a separate kernel change. A HIP
 build would inherit the CUDA path's fusions and graph replay; that is
 unmeasured and needs a ROCm install first.
+
+## Fusion 2: activation quantize written by the transform (scratch, rejected)
+
+The idea: the transform's subgroup variant also emits the q8_1 blocks of its
+output into the backend's shared quantized-activation buffer and records the
+reuse memo, so the consuming vector matmul skips its own quantize dispatch;
+the memo check was widened so a whole-tensor view of the transform output
+counts as the same activation. The change is
+[`apply_fwht_q8_vulkan.py`](r9700-vulkan-decode-2026-10-08-evidence/apply_fwht_q8_vulkan.py),
+applied after fusion 1 (library SHA-256 `338b347c…`).
+
+| Check | Result |
+| --- | --- |
+| fork's `MUL_MAT_HADAMARD` cases | 27/27 OK |
+| greedy 48-token generation, stock vs fused (`llama-simple`) | byte-identical |
+| 128-token decode at 30K, fused vs adjacent stock | 3.531 s vs 3.243 s, **8.9% more time** |
+| profiler, GPU op time per decode graph | 31.37 → 30.95 ms (less), transform 10.5 → 14.2 µs, matmuls −2 to −3 µs each |
+
+The quantize pass it removes costs the GPU only 2 to 3 µs per matmul, while
+the clustered reductions and lane shuffles the epilogue adds cost 4 to 6 µs
+per transform; under the profiler's per-operation fences the trade still
+looks slightly positive, in the real pipeline it is a loss. Not retained. The
+lesson for the rest of the program: on this card the activation quantize is
+not a lever, and a fusion only pays when the fused kernel is no heavier than
+the dispatch it removes.

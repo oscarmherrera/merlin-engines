@@ -1,0 +1,4 @@
+The three laws of thermodynamics are:
+
+1. The first law of thermodynamics states that energy cannot be created or destroyed, only transferred or transformed.
+2. The second law of thermodynamics states that the total entropy of an isolated system can never decrease over time.
