@@ -86,16 +86,34 @@ nothing (43.61 / 40.70 / 62.18 tok/s), so the cost is not graph capture. Where t
 cost sits (the fork's per-decode graph build and allocation, the recurrent-state rollback on a
 rejected draft, or the embedding read-backs) was not profiled.
 
+## Endpoint production path, RTX 3090 (`.42`, CUDA), with the port
+
+Owner: "stop the 3090 endpoint for the read". The production unit was stopped 10:44:15Z and
+restarted 10:46:40Z (back on its unit: slots 8, window 262,144, commit `7f4081f1`); the direct
+instance ran alone on the card in between, same binary, flags and ported `libllama`
+([`rtx3090-mtp-base.jsonl`](mtp-bonsai-2026-10-08-evidence/rtx3090-mtp-base.jsonl),
+[`rtx3090-mtp-mtp-d1.jsonl`](mtp-bonsai-2026-10-08-evidence/rtx3090-mtp-mtp-d1.jsonl),
+[`rtx3090-mtp-mtp-d3.jsonl`](mtp-bonsai-2026-10-08-evidence/rtx3090-mtp-mtp-d3.jsonl)):
+
+| Prompt | Base | MTP, draft max 1 | draft max 3 | Acceptance (max 1 / max 3) |
+| --- | ---: | ---: | ---: | ---: |
+| warehouse filler, 8K | 66.10 | **74.62 (+13%)** | 66.09 (0%) | 76% / 51% |
+| prose, short prompt | 72.14 | **77.31 (+7%)** | 61.54 (−15%) | 67% / 40% |
+| Go code, short prompt | 71.97 | 87.79 (+22%) | **91.38 (+27%)** | 89% / 76% |
+
+The fastest base decode in the fleet, so the fixed per-call cost hides least: draft max 3 is a
+loss on prose here. Draft max 1 is the production setting for this card; code alone would take 3.
+
 ## What to expect per host, and what is left
 
 - **R9700 (Vulkan):** +39% at 30K depth, +80 to +93% on short prompts, +171% on code, at
   draft max 3. Measured on the production path.
 - **RTX 8000 (CUDA):** +21 to +24% on general text at draft max 1, +42 to +48% on code. Measured.
   Draft max 1 is the right production setting on this card until the per-call cost is cut.
-- **RTX 3090 (CUDA):** not measured; its 24 GB cannot hold the production endpoint and a second
-  instance. Same runtime path as the RTX 8000, with a faster base decode, so expect the RTX 8000's
-  range or a little less at draft max 1. Needs its own read, and a VRAM check for the 3.2 GB head
-  (1.7 GB at Q4_0) beside its 81,920-token window.
+- **RTX 3090 (CUDA):** +7 to +13% on general text and +22 to +27% on code, at draft max 1
+  (max 3 for code only). Measured with the production endpoint stopped. The card runs a 262,144
+  window at 8 slots and holds 19.2 of 24.6 GB, so the Q8 head (3.2 GB) is tight there; a Q4_0
+  head (about 1.7 GB) is the deployable size and needs one acceptance read of its own.
 - **P40 (CUDA, judge pool):** not measured. Its base decode is the slowest in the fleet, which
   is the regime where the fixed cost hides, so the R9700-like range is plausible; a verify batch
   of four on Pascal is the unknown.

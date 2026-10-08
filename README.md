@@ -14,8 +14,11 @@ phase. The streaming proposal is retained in `docs/` as reference only.
 
 ## Status
 
-Direct tests now show improvements over stock Bonsai on the RTX8000 and
-RTX3090. P40 tuning is in progress; R9700 work has not started.
+Direct tests show improvements over stock Bonsai on the RTX8000 and RTX3090.
+P40 decode levers were measured and rejected; its prefill tile is retained.
+R9700 Vulkan fusions give 3% of decode. MTP speculative decoding on the Prism
+runtime is measured on three hosts; see
+[the MTP record](docs/benchmarks/mtp-bonsai-2026-10-08.md).
 
 | Device | Prompt + 128-token time reduction | Depth-only decode time reduction |
 | --- | ---: | ---: |
@@ -51,10 +54,28 @@ that this revision is the latest upstream release.
 
 The parent Merlin branch is `merlin-engines`, created from
 `v1.0.x-bug-fixes` at `7f4081f1f8548ac37cf01fa3bc0b507eb3e70f4a`.
-This repository is imported at the parent's `merlin-engines/` subtree prefix.
-Engine work lives here; endpoint integration changes belong on that parent
-branch. Merge into `v1.0.x-bug-fixes`, then Merlin main, after viability and
-formalization. Do not import the entire Merlin repository here.
+This repository was merged into the parent's `v1.0.x-bug-fixes` branch on
+2026-10-08 as the `engines/` directory, owned by Spec 025 (resident inference
+engines), which replaces the older `merlin-engines/` subtree prefix on the
+`merlin-engines` branch. Do not import the entire Merlin repository here.
+
+## What runs where
+
+The declared runtime per host is Spec 019's endpoint process-configuration
+table (`ops/<host>/merlin-endpoint.service` is the source of truth); this
+section says what each library set IS and which hosts it is approved for.
+
+| Library set | What it is | Hosts | State |
+| --- | --- | --- | --- |
+| `prism-b10743-adfffbe` | PrismML fork at tag `prism-b10743-adfffbe`, stock; `runtime.lock.json` pins it | rtx8000, rtx3090, r9700, asusP40 | deployed |
+| `llama-upstream-889edf43` | upstream llama.cpp, ryzen's own build; carries the MTP API | ryzen | deployed, with `--mtp-model` |
+| `merlin-engines-<sha>` | the fork plus this repository's CUDA kernels (CUTLASS prefill, Q8/DP4A decode, grouped attention), built by `scripts/build_runtime.py` | rtx8000, rtx3090 (sm_75, sm_86); P40 prefill tile only | built, direct runs only, not deployed |
+| fork + `prism-batch-ext-port.patch` | the fork plus the extended-batch port so `merlin-endpoint --mtp-model` works on Prism | every Bonsai host | built, measured on r9700, rtx8000, rtx3090; not deployed |
+| fork + Vulkan fusions 1 and 3 | sign-fused Hadamard transform and delta-net parity | r9700 only | built, +3% decode, not deployed |
+
+A host runs exactly one library set, named by its unit's `--lib`, `YZMA_LIB`
+and `LD_LIBRARY_PATH`, which must agree. Nothing here goes to a host without a
+deploy order per host, and the endpoint binary must match the set's binding.
 
 The endpoint already loads a llama.cpp-compatible shared-library set with
 `--lib`. Its Prism binding matches the pinned source. Preserve that ABI and
