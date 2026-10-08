@@ -88,3 +88,38 @@ Artifacts: Mac `/Users/oscar/Projects/merlin-engine-measurements/r9700-2026-10-0
 run script); compact copies in [`r9700-vulkan-decode-2026-10-08-evidence/`](r9700-vulkan-decode-2026-10-08-evidence/).
 Leftovers: the harness directory on `.41`, and an unneeded profiler build on
 the Ryzen at `/home/oscar/prism-vulkan-perf-20261008`.
+
+## Fusion 1: sign-fused Hadamard transform on Vulkan (scratch, measured)
+
+The CUDA backend folds the Hadamard sign multiply into its transform kernel
+(`fwht_signed`); the Vulkan backend did not, so every rotation cost a separate
+multiply dispatch, 258 per token. The port adds a signs binding to `fwht.comp`,
+four `fwht_signed*` shader variants, a `MUL + RESHAPE + FWHT-hint MUL_MAT`
+fusion predicate and a fused dispatch; the exact change is
+[`apply_fwht_signed_vulkan.py`](r9700-vulkan-decode-2026-10-08-evidence/apply_fwht_signed_vulkan.py)
+(seventeen exact anchors on the pinned source, built on the Ryzen with the
+committed toolchain, library SHA-256 `ded22a5e…`).
+
+| Check | Result |
+| --- | --- |
+| fork's `MUL_MAT_HADAMARD` CPU-reference cases on Vulkan0 | 27/27 OK, including all `test_fwht_signed` shapes |
+| 128-token decode at 30K, fused vs adjacent stock | 3.186 s vs 3.255 s, 2.1% less time (40.2 vs 39.3 tok/s) |
+| profiler, dispatches per decode graph | 2,199 → 2,085; 162 of 258 rotations fused |
+
+Removing 162 dispatches saved about 0.55 ms per token, so a small Vulkan
+dispatch costs about 3.5 µs unprofiled, far below the 7 to 10 µs the
+fence-per-op profiler shows. The 96 unfused rotations are graph-order cases:
+the three nodes are not adjacent when the linearization interleaves
+independent rotations, one shared rotation feeds three weights through a view,
+and some hinted matmuls follow the multiply with no reshape node. A
+dispatch-time rule at the multiply could recover most of them for about one
+more percent. GPU busy during steady decode was sampled at 92 to 93%, so host
+submission gaps are about 2 ms per token.
+
+What this establishes for the 20% target: every small operation on this card
+sums to roughly 6 ms of a 25 ms token, so fusion alone cannot reach 20% even
+if everything fused; the realistic program is 8 to 12% from fusion, up to 8%
+from writing the activation quantization in the transform's epilogue, and
+around 7% from the scalar attention path, each a separate kernel change. A HIP
+build would inherit the CUDA path's fusions and graph replay; that is
+unmeasured and needs a ROCm install first.
