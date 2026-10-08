@@ -148,3 +148,50 @@ looks slightly positive, in the real pipeline it is a loss. Not retained. The
 lesson for the rest of the program: on this card the activation quantize is
 not a lever, and a fusion only pays when the fused kernel is no heavier than
 the dispatch it removes.
+
+## Fusion 3: the delta-net kernel at parity with CUDA (scratch, measured, retained)
+
+The Vulkan gated-delta-net shader lagged the CUDA one in three ways, and the
+model builder (`src/models/qwen35.cpp`) knew it: raw gates were declined (so
+every recurrent layer paid a sigmoid, an add, a softplus and a multiply on the
+graph before the kernel), rows-mode state reads were declined, and the final
+state went back to the recurrent cache through a separate copy. The port adds
+the raw-gate math (`beta = sigmoid(beta)`, `g = a[h] * softplus(g + dt_bias[h])`,
+the CPU reference's formulas), the row-indexed state read, and a cache-write
+mode in which the kernel stores the final state straight into the cache view,
+with a `GDN + views + CPY` fusion predicate mirroring the CUDA
+`ggml_cuda_try_gdn_cache_fusion`; the builder's two capability lists accept the
+Vulkan backend. The change is
+[`apply_gdn_vulkan.py`](r9700-vulkan-decode-2026-10-08-evidence/apply_gdn_vulkan.py),
+applied after fusion 1 (library SHA-256 `704156d3…`).
+
+Two things the first build taught. The fork's `ggml_cpy` keeps its destination
+as operand 1 of the copy node, so the backend's generic "a fused op's input
+overlaps its output" guard vetoed the fusion on every layer while the
+profiler kept printing the fusion's label (the label is not cleared when a
+fusion is vetoed). A copy never reads that operand, so the guard now skips it,
+and a vetoed fusion drops its label. And `llama-bench` builds the graph with
+`n_rs_seq 0`, which takes the non-ring path: the kernel's rows mode is
+exercised by `test-backend-ops` only; the production server path with
+checkpoint slots was not measured here.
+
+| Check | Result |
+| --- | --- |
+| fork's `GATED_DELTA_NET` CPU-reference cases on Vulkan0 (incl. raw-gate and rows cases) | 49/49 OK |
+| fork's `MUL_MAT_HADAMARD` cases | 27/27 OK |
+| greedy 48-token generation, stock vs fused (`llama-simple`) | byte-identical |
+| profiler, dispatches per decode graph (fusion 1 → fusion 1+3) | 2,085 → 1,845: sigmoid −48, softplus −48, add −48, multiply −48, copy −48 |
+| 128-token decode at 30K, fused vs adjacent stock | 3.171 / 3.164 s vs 3.328 s |
+| 512-token decode at 30K, two alternating pairs | 41.93 / 42.19 vs 40.84 / 40.94 tok/s, **+2.8%** |
+
+The kernel itself grew from 7.9 to 8.6 µs per call (the softplus and sigmoid
+moved inside it), so the net is the 240 removed dispatches less that. The raw
+gates also changed the graph's linearization: 48 of the 162 sign-fused
+Hadamard rotations of fusion 1 lost their adjacency and fell back to the
+unfused form (`FWHT_SIGNED MUL` 162 → 114), so the rotation-coverage rule
+noted under fusion 1 is now worth about two percent rather than one.
+
+Running total for the Vulkan program on this card: fusion 1 + fusion 3 give
+about 3% of decode at 30K depth against stock, with byte-identical output;
+fusion 2 was rejected. Still unbuilt: the rotation-coverage rule (~2%), the
+scalar attention path (~7%), and the rest of the ~1,600 small dispatches.
